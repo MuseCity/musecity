@@ -415,3 +415,17 @@ Authenticated acceptance reused the existing regular Chrome session: homepage re
 The release includes the previously verified per-isolate Privy client reuse. Production acceptance confirms real authenticated reads, but does not instrument or claim a production JWKS fetch count. Warm-key reuse remains supported by the local real-workerd/SDK check above. Fresh OAuth callbacks, switching real accounts, content mutations and credential revocation were not exercised in production; identity switching, cache invalidation, pagination/history and authorization regressions retain the local test evidence recorded above.
 
 Evidence is saved in ignored `apps/web/.local/performance-release/`: `redeploy.log`, `released-version.json`, `released-deployments.json`, `smoke.json`, `after.json`, `comparison.json` and `authenticated-acceptance.json`. No remote push or database migration was performed. Rollback from `apps/web` is `corepack pnpm exec wrangler rollback 2d3e74c3-3196-41c6-8a6a-92c99eb261e8 --config build/server/wrangler.json`; it restores the previous Worker release, not database or Privy-dashboard state.
+
+## Global footer links release (2026-09-26)
+
+Added `GitHub` (`https://github.com/MuseCity/musecity`) and `X` (`https://x.com/musecityxyz`) to the shared application footer alongside Skill, API and MCP. Both use a new tab with `noopener noreferrer` and retain the existing responsive styling.
+
+The user explicitly authorized deployment and a local commit. Released at **2026-09-26 06:20:32 UTC / 14:20:32 Asia/Shanghai**, serving **100%** of `https://musecity.xyz` traffic.
+
+- Worker version: `d52d42f2-6715-49b2-9dcd-ea955848cde5`; deployment: `670ff21b-3594-4161-b815-d8a4cf29adee`. Cloudflare read-back confirms the active version and unchanged runtime bindings.
+- Typecheck, changed-file formatting and desktop/390px local checks passed before release. Production build, deployment guard, Wrangler dry run and `git diff --check` passed. Ordinary Wrangler deployment uploaded two changed static assets and reused 301 existing assets.
+- Production `/`, `/neighbors`, `/settings` and `/agents/mcp` return 200 with both exact links and the expected new-tab attributes in their footer. Page responses retain `private, no-store`; the new root JS matches the local build hash and retains one-year immutable caching. Anonymous `/api/v1/me` returns 401.
+- Production browser checks confirm both links at 1440 × 1000 and 390 × 844 without horizontal overflow (document widths 1425px and 375px). This is anonymous footer/layout acceptance; no login, account mutation or external social action was performed.
+- Evidence is saved in ignored `apps/web/.local/footer-release/`: build/guard/dry-run/deploy logs, pre-release and final deployment snapshots, version details, `smoke.json`, and desktop/mobile screenshots. No remote push, migration or configuration change was required.
+
+Rollback from `apps/web`: `corepack pnpm exec wrangler rollback 050a1298-e42f-4e6a-961a-fc051a28f1be --config build/server/wrangler.json`.

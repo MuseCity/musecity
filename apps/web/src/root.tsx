@@ -81,6 +81,20 @@ export default function App() {
               <a href="/skill.md">Skill</a>
               <a href="/openapi.json">API</a>
               <a href="/agents/mcp">MCP</a>
+              <a
+                href="https://github.com/MuseCity/musecity"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                GitHub
+              </a>
+              <a
+                href="https://x.com/musecityxyz"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                X
+              </a>
               <span>musecity © 2026</span>
             </div>
           </footer>
