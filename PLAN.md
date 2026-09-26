@@ -378,7 +378,7 @@ The source baseline is `f105155b16b339a1eb868d9cefc90be18dc457f0`. To roll back 
 
 ## Performance release attempt and local commit (2026-09-26)
 
-The user explicitly authorized deployment and committing the optimization. **The local changes are committed, but production deployment is blocked by interrupted Worker-upload connections.** No new Worker version was created or activated. No push or database migration was performed.
+The user explicitly authorized deployment and committing the optimization. The initial attempt committed the local changes but was blocked by interrupted Worker-upload connections. No new Worker version was created or activated during that attempt. The subsequent successful release is recorded below. No push or database migration was performed.
 
 - Deployment/asset guard, bundle fingerprints and Wrangler dry run passed. The intended commit contains nine source, test and documentation files. Ignored credentials, deployment bundles, browser samples and logs are excluded; staged content was checked against the configured secret values.
 - Wrangler uploaded **14 changed static assets** and reused **289**. The Worker upload then failed with `fetch failed` / `UND_ERR_SOCKET`, including one normal CLI retry. Official API upload attempts also failed: a timeout, followed by empty replies after the complete multipart body was transmitted. HTTP/1.1 and removal of the Expect handshake did not resolve it. Both the version-upload and direct script-upload endpoints were checked. The cause of the interrupted responses remains unresolved; no TLS verification, system proxy, dependency or production-permission settings were changed.
@@ -388,4 +388,30 @@ The user explicitly authorized deployment and committing the optimization. **The
 
 Evidence is saved in ignored `apps/web/.local/performance-release/`: deployment logs, baseline samples, bundle hashes, local compressed-bundle diagnostics, final version/deployment snapshots and `final-production-state.json`. Temporary upload-token metadata is removed after every attempt. The existing production tab and session are retained; the temporary local Worker is stopped.
 
-Next required action is to restore a working Worker-upload path or diagnose the upload failure with Cloudflare, then deploy the accepted build and complete the prepared production HTTP/browser checks. Use the version above as the rollback point. Repeated identical uploads are stopped because they no longer produce useful evidence; production must not be described as updated on the strength of the successful static-asset upload.
+At that point, the remaining action was to restore a working Worker-upload path, deploy the accepted build and complete production acceptance. Repeated identical uploads were stopped because they no longer produced useful evidence. The successful retry below resolves this release blocker without changing the accepted build.
+
+## Performance production release and acceptance (2026-09-26)
+
+At the user's request to retry publication and acceptance, released source commit **`cb6d455`** at **2026-09-26 04:37:41 UTC / 12:37:41 Asia/Shanghai** to **100%** of `https://musecity.xyz` traffic.
+
+- Worker version: **`050a1298-e42f-4e6a-961a-fc051a28f1be`**; deployment: **`e5401e28-ab84-439f-a8b7-0c03bf464b43`**. Verified through Cloudflare deployment read-back and Wrangler version inspection. Runtime bindings, including the Privy secret binding, match the previous production version.
+- All **332 build fingerprints** matched the accepted build and the deployment guard passed. One ordinary Wrangler deployment succeeded (45.55 seconds upload, 2.75 seconds trigger deployment, 76 ms reported Worker startup). No source, dependency, TLS, network or deployment-configuration workaround was needed; the earlier interrupted-upload cause remains unconfirmed.
+- **20 production HTTP checks passed.** Five hashed JS/CSS responses match local build hashes and return `public, max-age=31536000, immutable`. Unversioned brand/font responses retain revalidation. Pages, APIs, media denials and MCP retain `private, no-store`; missing/invalid authentication returns 401 and a missing media object returns 404.
+- **Five production samples per scenario passed** the browser assertions: cold Square, normal repeat Square, and Square-to-Neighbors SPA navigation. Every anonymous Square load makes **zero** duplicate list API calls (previously three), and every directory navigation makes zero (previously one). All **26 hashed resources** on each repeat visit have zero network transfer, compared with 26 network revalidations before the release.
+
+| Desktop production median, five samples | Before | After |
+| --- | ---: | ---: |
+| Cold TTFB | 1,410.7 ms | 1,225.5 ms |
+| Cold LCP | 2,192 ms | 2,344 ms |
+| Repeat TTFB | 233.3 ms | 621.1 ms |
+| Repeat LCP | 872 ms | 880 ms |
+| Neighbors SPA rendered directory | 278.3 ms | 387.9 ms |
+| Repeat same-origin transferred bytes, including document | 21,815 | 13,727 |
+
+These samples establish the expected request/cache behavior, **not an LCP improvement**. Timing results are mixed; repeat TTFB and directory navigation were slower. Before/after runs finished at 03:46:39 / 04:40:03 UTC on this machine/network, with no CPU throttling or controlled network conditions. They are not mobile measurements, field p75, INP or CLS acceptance.
+
+Authenticated acceptance reused the existing regular Chrome session: homepage refresh restored the signed-in account; `/me`, notifications, onboarding and authenticated lists returned 200; profile settings loaded and restored after a full refresh; Neighbors, the existing public profile and browser back-to-list navigation rendered correctly. No browser error logs were reported in the inspected session. A browser automation timeout during settings refresh was resolved by reacquiring the same tab; the restored settings were then observed. No profile save, publication, upload, block, credential revocation or wallet transaction was performed.
+
+The release includes the previously verified per-isolate Privy client reuse. Production acceptance confirms real authenticated reads, but does not instrument or claim a production JWKS fetch count. Warm-key reuse remains supported by the local real-workerd/SDK check above. Fresh OAuth callbacks, switching real accounts, content mutations and credential revocation were not exercised in production; identity switching, cache invalidation, pagination/history and authorization regressions retain the local test evidence recorded above.
+
+Evidence is saved in ignored `apps/web/.local/performance-release/`: `redeploy.log`, `released-version.json`, `released-deployments.json`, `smoke.json`, `after.json`, `comparison.json` and `authenticated-acceptance.json`. No remote push or database migration was performed. Rollback from `apps/web` is `corepack pnpm exec wrangler rollback 2d3e74c3-3196-41c6-8a6a-92c99eb261e8 --config build/server/wrangler.json`; it restores the previous Worker release, not database or Privy-dashboard state.
