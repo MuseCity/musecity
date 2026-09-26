@@ -13,6 +13,10 @@ export type Actor = {
   key: string;
 };
 export type VerifyHuman = (token: string) => Promise<string>;
+// Keep only the current app's SDK/JWKS cache, never tokens or verified identities.
+// productionServices is request-scoped, so this cache must outlive its closures.
+let cachedPrivy:
+  { appId: string; appSecret: string; client: PrivyClient } | undefined;
 export function privyVerifier(appId: string, appSecret: string): VerifyHuman {
   return async (token) => {
     requireValue(
@@ -22,8 +26,18 @@ export function privyVerifier(appId: string, appSecret: string): VerifyHuman {
       "Sign-in is not available yet. Please try again later.",
     );
     try {
-      const privy = new PrivyClient({ appId, appSecret });
-      return (await privy.utils().auth().verifyAccessToken(token)).user_id;
+      if (
+        !cachedPrivy ||
+        cachedPrivy.appId !== appId ||
+        cachedPrivy.appSecret !== appSecret
+      )
+        cachedPrivy = {
+          appId,
+          appSecret,
+          client: new PrivyClient({ appId, appSecret }),
+        };
+      return (await cachedPrivy.client.utils().auth().verifyAccessToken(token))
+        .user_id;
     } catch {
       throw new ApiError(
         401,

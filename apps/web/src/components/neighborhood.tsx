@@ -21,23 +21,51 @@ import type {
   Page,
   Attribution,
 } from "../shared/contracts";
-type CachedRead = { data: unknown; stale: boolean };
-const CacheContext = createContext<Map<string, CachedRead> | null>(null);
+type CachedRead = {
+  data?: unknown;
+  stale: boolean;
+  pending?: Promise<unknown>;
+};
+type ReadCache = {
+  entries: Map<string, CachedRead>;
+  consumedInitials: WeakSet<object>;
+};
+const CacheContext = createContext<ReadCache | null>(null);
+function remember(cache: ReadCache | null, key: string, entry: CachedRead) {
+  if (!cache) return;
+  cache.entries.set(key, entry);
+  if (cache.entries.size > 20)
+    cache.entries.delete(cache.entries.keys().next().value!);
+}
 export function NeighborhoodProvider({ children }: { children: ReactNode }) {
   const auth = useAuth();
+  // Loader objects may survive login/logout. Consume each snapshot once across
+  // identities so a new visitor session cannot resurrect an old SSR response.
+  const [consumedInitials] = useState(() => new WeakSet<object>());
   return (
     <NeighborhoodSession
       key={auth.ready ? (auth.userId ?? "visitor") : "loading"}
+      consumedInitials={consumedInitials}
     >
       {children}
     </NeighborhoodSession>
   );
 }
-function NeighborhoodSession({ children }: { children: ReactNode }) {
-  const [cache] = useState(() => new Map<string, CachedRead>());
+function NeighborhoodSession({
+  children,
+  consumedInitials,
+}: {
+  children: ReactNode;
+  consumedInitials: WeakSet<object>;
+}) {
+  const [cache] = useState<ReadCache>(() => ({
+    entries: new Map(),
+    consumedInitials,
+  }));
   useEffect(() => {
     const clear = () => {
-      for (const entry of cache.values()) entry.stale = true;
+      for (const [key, entry] of cache.entries)
+        cache.entries.set(key, { data: entry.data, stale: true });
     };
     window.addEventListener("neighborhood-change", clear);
     return () => window.removeEventListener("neighborhood-change", clear);
@@ -54,6 +82,14 @@ export function useNeighborhoodData<T>(
     location = useLocation(),
     cache = useContext(CacheContext);
   const key = location.key + ":" + path;
+  const freshInitial =
+    !auth.userId &&
+    !privateOnly &&
+    initial !== null &&
+    typeof initial === "object" &&
+    !cache?.consumedInitials.has(initial)
+      ? initial
+      : undefined;
   const [state, setState] = useState<{
     key: string;
     data: T | null;
@@ -62,16 +98,14 @@ export function useNeighborhoodData<T>(
   }>(() => ({
     key,
     data:
-      (cache?.get(key)?.data as T | undefined) ??
-      (auth.userId ? null : initial) ??
-      null,
+      (cache?.entries.get(key)?.data as T | undefined) ?? freshInitial ?? null,
     error: "",
     busy: true,
   }));
   const [version, setVersion] = useState(0);
   const reload = useCallback(() => {
-    const entry = cache?.get(key);
-    if (entry) entry.stale = true;
+    const entry = cache?.entries.get(key);
+    remember(cache, key, { data: entry?.data, stale: true });
     setVersion((v) => v + 1);
   }, [key, cache]);
   useEffect(() => {
@@ -81,7 +115,15 @@ export function useNeighborhoodData<T>(
       return;
     }
     let active = true;
-    const cached = cache?.get(key);
+    let cached = cache?.entries.get(key);
+    if (initial !== null && typeof initial === "object") {
+      const consumed = cache?.consumedInitials.has(initial);
+      cache?.consumedInitials.add(initial);
+      if (!cached && !consumed && !auth.userId && !privateOnly) {
+        cached = { data: initial, stale: false };
+        remember(cache, key, cached);
+      }
+    }
     if (cached && !cached.stale) {
       setState({ key, data: cached.data as T, error: "", busy: false });
       return;
@@ -96,7 +138,11 @@ export function useNeighborhoodData<T>(
     }));
     const read = (url: string) =>
       auth.userId ? api<T>(url) : request<T>("/api/v1" + url);
-    (async () => {
+    const entry: CachedRead = cached ?? { stale: true };
+    remember(cache, key, entry);
+    // Share the whole refresh (including restored pages). Its lifetime must not
+    // depend on whichever component happened to start the request first.
+    const pending = (entry.pending ??= (async () => {
       let data: T = await read(path);
       // Refresh as many pages as the visitor had opened before editing. This
       // keeps the original history entry tall enough to restore its scroll.
@@ -109,7 +155,7 @@ export function useNeighborhoodData<T>(
         let result = data as Page<{ id: string }>;
         const seen = new Set<string>();
         while (
-          active &&
+          (!cache || cache.entries.get(key) === entry) &&
           result.nextCursor &&
           result.items.length < previous.items.length &&
           !seen.has(result.nextCursor)
@@ -134,31 +180,54 @@ export function useNeighborhoodData<T>(
         }
         data = result as T;
       }
+      if (!cache || cache.entries.get(key) === entry) {
+        entry.data = data;
+        entry.stale = false;
+      }
       return data;
-    })()
+    })().finally(() => {
+      entry.pending = undefined;
+    }));
+    pending
       .then((data) => {
         if (active) {
-          cache?.set(key, { data, stale: false });
-          if (cache && cache.size > 20)
-            cache.delete(cache.keys().next().value!);
-          setState({ key, data, error: "", busy: false });
+          if (cache && cache.entries.get(key) !== entry) {
+            setVersion((v) => v + 1);
+            return;
+          }
+          setState({ key, data: data as T, error: "", busy: false });
         }
       })
       .catch((e) => {
-        if (active)
+        if (active) {
+          if (cache && cache.entries.get(key) !== entry) {
+            setVersion((v) => v + 1);
+            return;
+          }
           setState({ key, data: null, error: errorMessage(e), busy: false });
+        }
       });
     return () => {
       active = false;
     };
-  }, [path, key, auth.ready, auth.userId, api, cache, version, privateOnly]);
+  }, [
+    path,
+    key,
+    auth.ready,
+    auth.userId,
+    api,
+    cache,
+    version,
+    privateOnly,
+    initial,
+  ]);
   const read = useCallback(
     (url: string) => (auth.userId ? api<T>(url) : request<T>("/api/v1" + url)),
     [api, auth.userId],
   );
   const setData = useCallback(
     (data: T) => {
-      cache?.set(key, { data, stale: false });
+      remember(cache, key, { data, stale: false });
       setState({ key, data, error: "", busy: false });
     },
     [key, cache],

@@ -1,0 +1,4 @@
+# Vite-generated assets have content hashes. Unversioned public files retain
+# Cloudflare's default revalidation policy.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

@@ -182,6 +182,13 @@ The authorized Supabase project is `musecity` (`vlvhfnhmcpeuyoyiapuk`, Seoul). T
 
 Local development, automated database tests, and isolated browser acceptance use separate databases. Test authentication verifiers exist only in `tests/` and `e2e/`; production Worker and client entry points must not import them. Production configuration and secrets are not committed to the repository.
 
+### First performance round (2026-09-26)
+
+- Content-hashed build files under `/assets/*` use `public, max-age=31536000, immutable`. Unversioned brand artwork and fonts retain revalidation. Page/API/media responses retain their existing `no-store` rules and authorization checks.
+- Anonymous list/detail reads seed the existing navigation cache from public SSR results and share in-flight reads for the same history entry and URL. Consume a loader snapshot once across authentication transitions; restored or switched accounts fetch their own data. Keep the 20-entry bound, invalidation after writes, retries and loaded-page restoration on history navigation. Private reads never seed from public SSR.
+- Reuse one server Privy client per Worker isolate and current app-id/secret configuration. Cache only the SDK's public keys, never tokens, verified identities, database clients or permission decisions. Continue verifying every token and reading current account/Agent permissions. Rebuild the client on configuration changes. Concurrent cold key fetches remain subject to the SDK's Cloudflare request-isolation behavior.
+- This round changes no REST/MCP contracts or database schema. SDK/editor lazy loading, notification endpoints, SQL/lock changes and deployment placement remain future research. Local verification does not authorize production release or establish real OAuth/session recovery or field Web Vitals.
+
 ## 11. Acceptance and release boundaries
 
 - A new member joins, follows a neighbor, publishes content, and receives a reply notification from another member; a help request progresses from open to resolved on desktop and phone.

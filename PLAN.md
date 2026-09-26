@@ -330,3 +330,62 @@ corepack pnpm exec wrangler rollback f52ee0a7-9120-4d99-b634-8f1b9bcf2e7b --conf
 ```
 
 This restores the preceding Worker and its static artwork. Keep existing databases, storage, user content and Privy configuration unchanged.
+
+## First performance round — local implementation (2026-09-26)
+
+Implemented the three approved first-round changes: immutable hashed assets, reuse of anonymous SSR data, and per-isolate Privy client/key reuse. Later proposals (lazy login/editor startup, notification endpoints, database/lock changes and Worker placement) remain out of scope. Initial acceptance was local only. The user subsequently authorized deployment and a local commit; see the release-attempt record below.
+
+### Implementation and correctness
+
+- `apps/web/public/_headers` applies one-year immutable caching only to `/assets/*`, which contains Vite's content-hashed output. Unversioned brand/fonts retain revalidation. The local built Worker returns the intended header; public API, denied private API and missing media responses retain `private, no-store`.
+- The existing neighborhood cache consumes public loader snapshots once, shares pending reads for the same history key/URL, and keeps its 20-entry limit. Account changes remount the cache. A consumed anonymous snapshot cannot return after logout; authenticated reads still apply account-specific filtering. Invalidation replaces the cache entry so a late response cannot mark invalidated data fresh. Retrying, returning to lists and restoring loaded pagination remain supported.
+- The server retains one Privy client for the current app id and secret, rebuilding when either changes. Every token is still verified; current account/Agent permissions, expiry, revocation and database-client lifetimes are unchanged. No token or verified identity is cached.
+
+### Verification
+
+- Node 24.11.1 / pnpm 10.33.2: **76 tests in 10 files pass**, including four new tests using the real Privy SDK and locally signed synthetic JWTs. They cover concurrent and sequential reuse, configuration changes, invalid signature/expiry/issuer/audience and missing configuration. Existing real-local-PostgreSQL tests cover blocking, content revision/visibility, pagination, account isolation and credential pause/scope reduction/rotation/revocation.
+- **Seven browser hook checks pass** in the isolated fixture: delayed auth readiness and SSR reuse; concurrent consumers including the initiating consumer unmounting; account changes/logout; invalidation during a pending request; failed-read retry; private reads; and pagination/history restoration. These use actual React hooks and controlled HTTP responses. Separately, the fixture's real UI/API passed Alice sign-in, reload/session restoration, switch to Bob and sign-out/private-page clearing. These identities are simulated, with local PostgreSQL; no external account was modified.
+- A real **workerd** test uses the production verifier/SDK with synthetic JWTs and a local outbound JWKS responder. Five concurrent cold requests succeed and cause five key fetches; **five subsequent requests cause zero additional key fetches**, and an expired token remains rejected (401). The SDK intentionally avoids sharing an in-flight fetch between Cloudflare request contexts, so the Node test's single cold fetch must not be claimed for Workers. Completed keys are reused safely.
+- Worker/React Router type generation, TypeScript, production build, source formatting, deployment/asset guard and `git diff --check` pass. Existing dependency annotation/chunk-size build warnings remain. No dependency or production configuration changes were needed.
+- The actual Privy modal opens on the local production build with Email, Google, X/Twitter and wallet choices. Client authentication startup and callback code were not changed. **Real Privy session recovery and OAuth callback completion were not exercised**; the fixture and synthetic tokens do not establish these results. They remain authenticated release acceptance checks.
+
+### Five-sample local production-build comparison
+
+Measured five fresh isolated browser sessions before and after, each covering cold load, a normal repeat visit through `about:blank`, and SPA navigation from Square to Neighbors. Headless Chrome, local Worker at `127.0.0.1:5190`, local database `127.0.0.1:65433/musecity`, no CPU/network throttling. Waited for Privy's public app-config request and settled resources before reading buffered performance entries. Incomplete paint samples from the initial measurement script were discarded; only complete five-sample runs are reported below.
+
+| Metric | Before | After |
+| --- | ---: | ---: |
+| Anonymous Square duplicate API reads, every cold/repeat visit | 3 | 0 |
+| Neighbors navigation duplicate API reads, every visit | 1 | 0 |
+| Repeat visit hashed assets using network, every visit | 26 | 0 |
+| Repeat visit hashed-asset transferred bytes, median | 7,800 | 0 |
+| Repeat visit total same-origin transferred bytes, median | 15,783 | 6,938 |
+| Cold TTFB / LCP, median | 42.5 / 212 ms | 45.7 / 236 ms |
+| Repeat TTFB / LCP, median | 32.1 / 136 ms | 36.7 / 196 ms |
+| Neighbors SPA navigation to rendered directory, median | 74.5 ms | 67.8 ms |
+
+Before optimization, removed duplicate API calls had median durations of 67.1 ms on cold loads and 49.3 ms on repeat visits. After optimization they are absent, rather than zero-duration requests. SPA navigation still loads its route data through React Router. Browser Resource Timing records cached assets too; zero transferred bytes distinguish them from network revalidation. Total resource-entry medians changed from 40 to 37 (cold) and 39 to 36 (repeat), with occasional extra third-party startup resources.
+
+These samples demonstrate fewer requests and cache reuse, **not an LCP improvement**: the local LCP medians increased. Loopback timings and five samples cannot establish a production latency change, mobile performance or p75 Web Vitals. Production cold/repeat/navigation measurements and authenticated acceptance require a separately authorized release. User content/media authorization and no-store responses remain in place.
+
+### Reproduction and rollback
+
+From `apps/web`, run `corepack pnpm test`, `corepack pnpm typecheck`, `corepack pnpm build`, `corepack pnpm format:check` and `corepack pnpm guard:deployment`. With the local preview configured for the validated local database, run `node e2e/verify-performance.mjs after`; this asserts zero duplicate list APIs and browser-cache reuse for all five repeat visits. `node e2e/verify-privy-worker.mjs` runs the isolated Worker key-cache check without cloud requests. The browser hook harness can be invoked from the isolated Vite fixture with `await (await import('/e2e/neighborhood-cache-checks.tsx')).runNeighborhoodCacheChecks()`.
+
+Raw browser samples are in ignored `apps/web/test-results/performance/{before,after}.json`; local check logs use `/tmp/musecity-performance-*.log`, `/tmp/musecity-cache-regression.log` and `/tmp/musecity-privy-worker.log`. None contain real authentication credentials.
+
+The source baseline is `f105155b16b339a1eb868d9cefc90be18dc457f0`. To roll back this round, restore only `apps/web/src/components/neighborhood.tsx` and `apps/web/src/server/auth.ts` from that revision and remove this round's `apps/web/public/_headers`, after checking for later edits. Rebuild and restart the local preview. Remove this round's test files/specification/record only if reverting its supporting evidence too. No database or cloud rollback is needed. Any future release rollback must also restore the preceding static-asset bundle; hashed URLs retain their old content safely until cache expiry.
+
+## Performance release attempt and local commit (2026-09-26)
+
+The user explicitly authorized deployment and committing the optimization. **The local changes are committed, but production deployment is blocked by interrupted Worker-upload connections.** No new Worker version was created or activated. No push or database migration was performed.
+
+- Deployment/asset guard, bundle fingerprints and Wrangler dry run passed. The intended commit contains nine source, test and documentation files. Ignored credentials, deployment bundles, browser samples and logs are excluded; staged content was checked against the configured secret values.
+- Wrangler uploaded **14 changed static assets** and reused **289**. The Worker upload then failed with `fetch failed` / `UND_ERR_SOCKET`, including one normal CLI retry. Official API upload attempts also failed: a timeout, followed by empty replies after the complete multipart body was transmitted. HTTP/1.1 and removal of the Expect handshake did not resolve it. Both the version-upload and direct script-upload endpoints were checked. The cause of the interrupted responses remains unresolved; no TLS verification, system proxy, dependency or production-permission settings were changed.
+- To test whether payload size was responsible, generated a temporary esbuild-minified deployment bundle: four modules decreased from **4,009,271 to 1,909,926 bytes**. Twenty local HTTP checks and the minified workerd verifier check passed; the local MCP denial is 403 because that preview host differs from its configured origin. Uploading the smaller bundle failed in the same way. These diagnostic artifacts were not deployed, and the original accepted build remains unchanged.
+- Final Cloudflare read-back confirms the newest version is still **`2d3e74c3-3196-41c6-8a6a-92c99eb261e8`**, serving **100%** traffic in deployment **`fd77f4a1-e263-40fe-b955-6a0e8c5ef318`**. The public homepage/feed remain available, anonymous `/api/v1/me` remains denied, and hashed assets still have the preceding revalidation policy. Uploaded assets alone do not make this optimization live; no rollback is required while the old version remains active.
+- Completed **five pre-release production samples** for each scenario. Median cold TTFB/LCP: **1,410.7 / 2,192 ms**; repeat TTFB/LCP: **233.3 / 872 ms**; Neighbors SPA navigation: **278.3 ms**. Every Square visit still made three duplicate API reads, every directory navigation one, and every repeat visit revalidated 26 hashed assets. These are desktop samples on this machine/network, not field p75 or mobile results. Post-release comparison and authenticated release acceptance remain unperformed because publication did not succeed.
+
+Evidence is saved in ignored `apps/web/.local/performance-release/`: deployment logs, baseline samples, bundle hashes, local compressed-bundle diagnostics, final version/deployment snapshots and `final-production-state.json`. Temporary upload-token metadata is removed after every attempt. The existing production tab and session are retained; the temporary local Worker is stopped.
+
+Next required action is to restore a working Worker-upload path or diagnose the upload failure with Cloudflare, then deploy the accepted build and complete the prepared production HTTP/browser checks. Use the version above as the rollback point. Repeated identical uploads are stopped because they no longer produce useful evidence; production must not be described as updated on the strength of the successful static-asset upload.
