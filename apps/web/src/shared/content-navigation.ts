@@ -6,8 +6,8 @@ export const contentKinds = [
 ] as const;
 
 export function contentKind(params: URLSearchParams) {
-  // Old format/topic URLs remain valid and visibly belong to Creations.
-  return params.get("type") || params.get("tag")
+  // Formats belong to Creations; shared tags can contain every content category.
+  return params.get("view") === "sites" || params.get("type")
     ? "work"
     : params.get("kind") || "all";
 }
@@ -35,15 +35,24 @@ export function contentHref(
 ) {
   const next = currentListParams(search);
   next.delete("cursor");
+  if (key === "tab") {
+    if (value === "sites" || next.get("view") === "sites")
+      for (const incompatible of ["kind", "type", "help", "status"])
+        next.delete(incompatible);
+    next.delete("view");
+    next.delete("tag");
+    if (value.startsWith("tag:")) next.set("tag", value.slice(4));
+    else if (value === "following" || value === "sites")
+      next.set("view", value);
+    return path + (next.size ? "?" + next : "");
+  }
   if (key === "kind") {
     if (value !== "work")
-      for (const incompatible of ["type", "tag", "status"])
-        next.delete(incompatible);
+      for (const incompatible of ["type", "status"]) next.delete(incompatible);
     if (value !== "help") next.delete("help");
   }
-  if (key === "type" || key === "tag") {
+  if (key === "type") {
     next.set("kind", "work");
-    next.delete(key === "type" ? "tag" : "type");
     next.delete("help");
   }
   if (value && value !== "all") next.set(key, value);
@@ -55,12 +64,28 @@ export function publicContentParams(search: string, owner?: string) {
   const params = currentListParams(search);
   params.delete("status");
   params.delete("edit");
-  if (params.get("type") || params.get("tag")) params.set("kind", "work");
+  if (params.get("type")) params.set("kind", "work");
   if (owner) {
     params.set("owner", owner);
     params.delete("view");
   }
+  if (params.get("view") === "sites") {
+    params.set("kind", "work");
+    params.set("type", "website");
+    params.delete("help");
+  }
   return params;
+}
+
+export function shareHref(kind: string, tag?: string | null) {
+  const params = new URLSearchParams();
+  if (kind === "help") params.set("kind", "help");
+  if (kind === "sites") params.set("from", "sites");
+  if (tag) params.set("tag", tag);
+  return (
+    (kind === "work" || kind === "sites" ? "/publish" : "/share") +
+    (params.size ? "?" + params : "")
+  );
 }
 
 export type ContentOrigin = {

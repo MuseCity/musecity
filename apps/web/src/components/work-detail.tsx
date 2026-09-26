@@ -1,4 +1,4 @@
-import { useTopics } from "./catalog";
+import { TopicLinks } from "./topic-picker";
 import { Link } from "react-router";
 import { ArrowUpRight, Bot } from "lucide-react";
 import { type WorkContent, type WorkView } from "../shared/contracts";
@@ -12,7 +12,6 @@ export function WorkBody({
   body: WorkContent;
   privateImages?: boolean;
 }) {
-  const topics = useTopics();
   return (
     <>
       {body.type !== "image" && body.coverMediaId && (
@@ -59,13 +58,7 @@ export function WorkBody({
           <ArrowUpRight size={16} />
         </a>
       )}
-      <div className="flex flex-wrap gap-2 mt-8">
-        {body.tagIds.map((id) => (
-          <Link className="chip" key={id} to={"/?tag=" + id}>
-            {topics.find((t) => t.id === id)?.name ?? id}
-          </Link>
-        ))}
-      </div>
+      <TopicLinks ids={body.tagIds} />
       {(body.aiDeclaration !== undefined || body.aiTools.length > 0) && (
         <p className="text-xs text-muted mt-7">
           {body.aiDeclaration === true

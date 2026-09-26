@@ -2,13 +2,15 @@ import {
   ContentKinds,
   useContentSource,
   useFilterLocation,
-  ContentFilterLink,
+  CreationFormats,
 } from "../components/content-navigation";
-import { CreationFilters } from "../components/creation-filters";
+import { FeedTabs } from "../components/feed-tabs";
+import { useTopics } from "../components/catalog";
 import {
   contentKind,
   publicContentParams,
   retiredEcosystemPath,
+  shareHref,
 } from "../shared/content-navigation";
 import {
   Link,
@@ -95,43 +97,27 @@ function Square() {
   const params = new URLSearchParams(filterLocation.search),
     view = params.get("view") ?? "latest",
     kind = contentKind(params);
+  const sites = view === "sites";
+  const tag = useTopics().find((topic) => topic.id === params.get("tag"));
   const state = useContentSource();
   return (
     <>
-      <section className="square-intro">
-        <div className="square-intro-copy">
-          <div className="eyebrow">PEOPLE. MUSE AI. POSSIBILITIES.</div>
-          <h1>
-            A city we build <span>together.</span>
-          </h1>
-          <p>{description}</p>
-        </div>
-        <img
-          className="square-illustration"
-          src="/brand/mascot.webp"
-          alt=""
-          width="640"
-          height="800"
-          fetchPriority="high"
-        />
-      </section>
+      <h1 className="sr-only">Community Square</h1>
       <div className="neighborhood-layout">
         <section className="square-main" aria-label="Community square">
+          <FeedTabs />
           {auth.userId &&
             setup &&
             (!setup.profile.joinedAt ||
               (setup.startedAt && !setup.finishedAt)) && (
-              <div className="welcome-note">
+              <div className="welcome-note mt-3">
                 <div>
                   <strong>
                     {setup.profile.joinedAt
                       ? "You’re in. Make yourself at home."
                       : "Your home is waiting, " + setup.profile.name + "."}
                   </strong>
-                  <p>
-                    Set up your home, say hello, and bring your Muse. The last
-                    two steps can wait.
-                  </p>
+                  <p>Set up your home, then explore at your own pace.</p>
                 </div>
                 <Link to="/move-in" className="text-link">
                   {setup.startedAt ? "Continue setting up" : "Move in"}{" "}
@@ -139,23 +125,37 @@ function Square() {
                 </Link>
               </div>
             )}
-          <div className="square-controls">
-            <nav aria-label="Feed view" className="feed-view-tabs">
-              {["latest", "following"].map((v) => (
-                <ContentFilterLink
-                  key={v}
-                  className={view === v ? "active" : ""}
-                  aria-current={view === v ? "page" : undefined}
-                  field="view"
-                  value={v}
-                >
-                  {v === "latest" ? "Latest" : "Following"}
-                </ContentFilterLink>
-              ))}
-            </nav>
-          </div>
-          <ContentKinds />
-          {kind === "work" && <CreationFilters />}
+          {sites ? (
+            <div className="shared-tag-heading mb-3">
+              <div>
+                <h2>Built with AI</h2>
+                <p>Websites from the community.</p>
+              </div>
+              <Link
+                className="secondary compact"
+                state={state}
+                to={shareHref("sites", tag?.id)}
+              >
+                Share a site <ArrowUpRight size={15} />
+              </Link>
+            </div>
+          ) : tag ? (
+            <div className="shared-tag-heading">
+              <div>
+                <h2>{tag.name}</h2>
+                <p>Everyone can share here.</p>
+              </div>
+              <Link
+                className="secondary compact"
+                state={state}
+                to={shareHref(kind, tag.id)}
+              >
+                Share here <ArrowUpRight size={15} />
+              </Link>
+            </div>
+          ) : null}
+          {!sites && <ContentKinds />}
+          {!sites && kind === "work" && <CreationFormats />}
           {view === "following" && auth.ready && !auth.userId ? (
             <Empty title="Keep your neighbors close.">
               <p>
@@ -186,13 +186,19 @@ function Square() {
                     title={
                       view === "following"
                         ? "musecity starts with a hello."
-                        : "The square is yours to start."
+                        : sites
+                          ? "Share your first AI-built website."
+                          : tag
+                            ? `Start a conversation in ${tag.name}.`
+                            : "The square is yours to start."
                     }
                   >
                     <p>
                       {view === "following"
                         ? "Find a few neighbors to follow. Their creations, updates, and help requests will appear here."
-                        : "Share an idea, show something you made, or ask your neighbors for a hand."}
+                        : sites
+                          ? "Add a link, a cover, and a few words about what you made."
+                          : "Share an idea, show something you made, or ask your neighbors for a hand."}
                     </p>
                     <Link
                       className="text-link inline-block mt-4"
@@ -200,20 +206,18 @@ function Square() {
                       to={
                         view === "following"
                           ? "/neighbors"
-                          : kind === "work"
-                            ? "/publish"
-                            : kind === "help"
-                              ? "/share?kind=help"
-                              : "/share"
+                          : shareHref(sites ? "sites" : kind, tag?.id)
                       }
                     >
                       {view === "following"
                         ? "Meet your neighbors →"
-                        : kind === "work"
-                          ? "Share a creation →"
-                          : kind === "help"
-                            ? "Ask for help →"
-                            : "Share an update →"}
+                        : sites
+                          ? "Share a site →"
+                          : kind === "work"
+                            ? "Share a creation →"
+                            : kind === "help"
+                              ? "Ask for help →"
+                              : "Share an update →"}
                     </Link>
                   </Empty>
                 ))}
@@ -227,25 +231,6 @@ function Square() {
           )}
         </section>
         <aside className="neighborhood-sidebar">
-          <div className="sidebar-welcome">
-            <img
-              className="sidebar-mascot"
-              src="/brand/mascot.webp"
-              alt=""
-              width="640"
-              height="800"
-              loading="lazy"
-            />
-            <img src="/brand/icon.png" alt="" width="36" height="36" />
-            <h2>Make yourself at home.</h2>
-            <p>
-              A place for creators, curious minds, and their Muse AI. Everyone
-              is welcome.
-            </p>
-            <Link to="/neighbors">
-              Find your people <ArrowUpRight size={15} />
-            </Link>
-          </div>
           <section className="sidebar-section">
             <div className="sidebar-heading">
               <UsersRound size={17} />

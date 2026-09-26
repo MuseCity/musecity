@@ -3,7 +3,7 @@ import { profile, profileSql, audit, dailyBudget, type Actor } from "./auth";
 import { id } from "./crypto";
 import { requireValue } from "./errors";
 import { ownMedia } from "./media";
-import { catalog } from "./works";
+import { catalog, validateTags } from "./tags";
 import type { AccountRow } from "./schema";
 import {
   workTypes,
@@ -164,7 +164,7 @@ export async function target(
     await requireUnblocked(db, viewer.account.id, row.owner_account_id);
   return row.owner_account_id;
 }
-const postSelect = `SELECT p.id,p.kind,p.text,p.title,p.expected_outcome AS "expectedOutcome",p.media_ids AS "mediaIds",p.help_status AS "helpStatus",p.revision,p.created_at AS "createdAt",p.updated_at AS "updatedAt",${profileSql("a")} AS owner,${agentSql("g")} AS agent
+const postSelect = `SELECT p.id,p.kind,p.text,p.title,p.expected_outcome AS "expectedOutcome",p.media_ids AS "mediaIds",p.tag_ids AS "tagIds",p.help_status AS "helpStatus",p.revision,p.created_at AS "createdAt",p.updated_at AS "updatedAt",${profileSql("a")} AS owner,${agentSql("g")} AS agent
  FROM musecity.posts p JOIN musecity.accounts a ON a.id=p.owner_account_id LEFT JOIN musecity.agents g ON g.id=p.agent_id`;
 export async function postView(
   db: Database,
@@ -189,14 +189,20 @@ export async function communityFeed(
     owner = params.get("owner"),
     help = params.get("help");
   requireValue(
-    ["latest", "following"].includes(view) &&
+    ["latest", "following", "sites"].includes(view) &&
       (!kind || ["work", "update", "help"].includes(kind)) &&
       (!type || workTypes.includes(type as (typeof workTypes)[number])) &&
-      !(type && tag) &&
       (!help || help === "open"),
     400,
     "INVALID_FILTER",
     "Choose valid community filters.",
+  );
+  requireValue(
+    view !== "sites" ||
+      ((!kind || kind === "work") && (!type || type === "website") && !help),
+    400,
+    "INVALID_FILTER",
+    "Sites contains AI-assisted websites only.",
   );
   requireValue(
     view !== "following" || viewer,
@@ -212,6 +218,7 @@ export async function communityFeed(
       "Unknown topic.",
     );
   const filter = JSON.stringify([
+      "shared-tags-v1",
       view,
       kind,
       type,
@@ -239,16 +246,17 @@ export async function communityFeed(
  FROM musecity.works w JOIN musecity.work_revisions r ON r.id=w.published_revision_id
  LEFT JOIN musecity.agents s ON s.id=w.created_by_agent_id LEFT JOIN musecity.agents p ON p.id=w.published_by_agent_id
  WHERE w.status='published' AND NOT w.blocked AND ($1::text IS NULL OR r.payload->>'type'=$1) AND ($2::text IS NULL OR $2=ANY(r.tag_ids))
+ AND ($7<>'sites' OR (r.payload->>'type'='website' AND r.payload->'aiDeclaration'='true'::jsonb))
  UNION ALL
  SELECT p.id,p.kind,p.owner_account_id,p.agent_id,p.created_at,
- jsonb_build_object('id',p.id,'kind',p.kind,'text',p.text,'title',p.title,'expectedOutcome',p.expected_outcome,'mediaIds',p.media_ids,'helpStatus',p.help_status,'revision',p.revision,'createdAt',p.created_at,'updatedAt',p.updated_at)
- FROM musecity.posts p WHERE NOT p.deleted AND NOT p.blocked AND $1::text IS NULL AND $2::text IS NULL AND ($3::text IS NULL OR (p.kind='help' AND p.help_status='open'))
+ jsonb_build_object('id',p.id,'kind',p.kind,'text',p.text,'title',p.title,'expectedOutcome',p.expected_outcome,'mediaIds',p.media_ids,'tagIds',p.tag_ids,'helpStatus',p.help_status,'revision',p.revision,'createdAt',p.created_at,'updatedAt',p.updated_at)
+ FROM musecity.posts p WHERE NOT p.deleted AND NOT p.blocked AND $7<>'sites' AND $1::text IS NULL AND ($2::text IS NULL OR p.tag_ids @> ARRAY[$2]::text[]) AND ($3::text IS NULL OR (p.kind='help' AND p.help_status='open'))
  ) SELECT e.id,e.kind,e.created_at AS "createdAt",e.payload,${profileSql("a")} AS owner,${agentSql("g")} AS agent,
  (SELECT count(*)::integer FROM musecity.comments c JOIN musecity.accounts ca ON ca.id=c.owner_account_id WHERE (c.work_id=e.id OR c.post_id=e.id) AND NOT c.deleted AND NOT c.blocked AND ca.status='active' AND ${unblockedSql("ca.id", "$4")}) AS "commentCount"
  FROM entries e JOIN musecity.accounts a ON a.id=e.owner_account_id LEFT JOIN musecity.agents g ON g.id=e.agent_id
  WHERE a.status='active' AND ${unblockedSql("a.id", "$4")}
  AND ($5::text IS NULL OR e.kind=$5) AND ($6::text IS NULL OR a.handle=$6)
- AND ($7='latest' OR EXISTS(SELECT 1 FROM musecity.follows f WHERE f.follower_id=$4 AND f.followed_id=a.id))
+ AND ($7<>'following' OR EXISTS(SELECT 1 FROM musecity.follows f WHERE f.follower_id=$4 AND f.followed_id=a.id))
  AND ($3::text IS NULL OR e.kind='help') AND ($8::timestamptz IS NULL OR (e.created_at,e.id)<($8,$9))
  ORDER BY e.created_at DESC,e.id DESC LIMIT 21`,
     [
@@ -299,6 +307,7 @@ export async function savePost(
   postId?: string,
   revision?: number,
 ) {
+  await validateTags(db, content.tagIds);
   await validateImages(db, a, content.mediaIds);
   if (postId) {
     const existing = await db.one<{
@@ -329,20 +338,21 @@ export async function savePost(
       "Keep the original post type.",
     );
     await db.query(
-      "UPDATE musecity.posts SET text=$2,title=$3,expected_outcome=$4,media_ids=$5,revision=revision+1,updated_at=date_trunc('milliseconds',clock_timestamp()) WHERE id=$1",
+      "UPDATE musecity.posts SET text=$2,title=$3,expected_outcome=$4,media_ids=$5,tag_ids=$6,revision=revision+1,updated_at=date_trunc('milliseconds',clock_timestamp()) WHERE id=$1",
       [
         postId,
         content.text,
         content.title,
         content.expectedOutcome,
         content.mediaIds,
+        content.tagIds,
       ],
     );
   } else {
     await dailyBudget(db, a, "publication");
     postId = id("post");
     await db.query(
-      "INSERT INTO musecity.posts(id,owner_account_id,agent_id,kind,text,title,expected_outcome,media_ids,help_status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+      "INSERT INTO musecity.posts(id,owner_account_id,agent_id,kind,text,title,expected_outcome,media_ids,help_status,tag_ids) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
       [
         postId,
         a.account.id,
@@ -353,6 +363,7 @@ export async function savePost(
         content.expectedOutcome,
         content.mediaIds,
         content.kind === "help" ? "open" : null,
+        content.tagIds,
       ],
     );
   }

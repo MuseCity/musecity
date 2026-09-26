@@ -16,7 +16,44 @@ export const topics = [
   { id: "games", name: "Games" },
   { id: "experiments", name: "Experiments" },
 ];
-export const defaultTabs = ["all", ...workTypes.map((t) => "type:" + t)];
+export const defaultTabs = ["latest", "following", "sites"];
+export const maxFeedTabs = 21;
+export type Topic = { id: string; name: string };
+export const createTagSchema = z
+  .object({
+    name: z
+      .string()
+      .transform((name) => name.normalize("NFKC").trim().replace(/\s+/g, " "))
+      .pipe(z.string().min(1).max(40))
+      .refine(
+        (name) => /[\p{L}\p{N}]/u.test(name) && !/[\p{Cc}\p{Cf}]/u.test(name),
+        "Use a readable tag name.",
+      )
+      .refine(
+        (name) => !defaultTabs.includes(name.toLowerCase()),
+        "Latest, Following and Sites are reserved tabs.",
+      ),
+  })
+  .strict();
+export const feedPreferencesSchema = z
+  .object({
+    tabs: z
+      .array(z.string())
+      .min(defaultTabs.length)
+      .max(maxFeedTabs)
+      .refine(
+        (tabs) =>
+          defaultTabs.every((tab, i) => tabs[i] === tab) &&
+          new Set(tabs).size === tabs.length,
+        "Latest, Following and Sites must stay first; tabs must be unique.",
+      ),
+  })
+  .strict();
+const tagIdsSchema = z
+  .array(z.string())
+  .max(5)
+  .refine((ids) => new Set(ids).size === ids.length)
+  .default([]);
 export const scopes = [
   "content:read",
   "content:write",
@@ -231,11 +268,7 @@ export const workSchema = z
     description: z.string().max(5000).default(""),
     aiDeclaration: z.boolean().optional(),
     aiTools: z.array(z.string().trim().min(1).max(80)).max(10).default([]),
-    tagIds: z
-      .array(z.string())
-      .max(5)
-      .refine((v) => new Set(v).size === v.length)
-      .default([]),
+    tagIds: tagIdsSchema,
     websiteUrl: urlSchema.optional(),
     videoUrl: urlSchema.optional(),
     coverMediaId: z.string().optional(),
@@ -362,6 +395,7 @@ export const postSchema = z
     text: z.string().trim().min(1).max(5000),
     title: z.string().trim().max(120).default(""),
     expectedOutcome: z.string().trim().max(1000).default(""),
+    tagIds: tagIdsSchema,
     mediaIds: z
       .array(z.string())
       .max(9)

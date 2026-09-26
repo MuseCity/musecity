@@ -14,13 +14,13 @@ import {
 import { ApiError, requireValue } from "./errors";
 import { id, digest } from "./crypto";
 import {
-  catalog,
   feed,
   workView,
   createWork,
   editWork,
   changePublication,
 } from "./works";
+import { catalog, createTag } from "./tags";
 import {
   createUpload,
   uploadBytes,
@@ -55,6 +55,8 @@ import { myContent } from "./content";
 import {
   workSchema,
   defaultTabs,
+  createTagSchema,
+  feedPreferencesSchema,
   scopesSchema,
   draftScopes,
   type Scope,
@@ -231,6 +233,14 @@ export function createApi(s: Services) {
   });
   app.get("/api/v1/health", (c) => c.json({ status: "ok" }));
   app.get("/api/v1/tags", async (c) => c.json({ tags: await db(catalog) }));
+  app.post("/api/v1/tags", async (c) => {
+    const body = await json(c, createTagSchema);
+    return c.json(
+      await write(c, "content:write", true, body, (d, a) =>
+        createTag(d, a, body.name),
+      ),
+    );
+  });
   app.get("/api/v1/me/content", async (c) =>
     c.json(
       await authed(c, undefined, true, (d, a) =>
@@ -360,27 +370,18 @@ export function createApi(s: Services) {
           ...(await catalog(d)).map((t) => "tag:" + t.id),
         ];
         return {
-          tabs: p?.tabs.filter((t) => available.includes(t)) ?? defaultTabs,
+          tabs: [
+            ...defaultTabs,
+            ...(p?.tabs.filter(
+              (t) => t.startsWith("tag:") && available.includes(t),
+            ) ?? []),
+          ],
         };
       }),
     ),
   );
   app.put("/api/v1/me/feed-preferences", async (c) => {
-    const body = await json(
-      c,
-      z
-        .object({
-          tabs: z
-            .array(z.string())
-            .min(1)
-            .max(20)
-            .refine(
-              (t) => t[0] === "all" && new Set(t).size === t.length,
-              "All must stay first; tabs must be unique.",
-            ),
-        })
-        .strict(),
-    );
+    const body = await json(c, feedPreferencesSchema);
     return c.json(
       await write(c, "content:write", true, body, async (d, a) => {
         const allowed = [

@@ -17,6 +17,7 @@ import {
 import { useAuth } from "./auth";
 import { useNeighborhoodData } from "./neighborhood";
 import { useContentSource } from "./content-navigation";
+import { shareHref } from "../shared/content-navigation";
 import type { Profile } from "../shared/contracts";
 export function Header() {
   const auth = useAuth();
@@ -104,7 +105,19 @@ export function Header() {
           </Link>
         </nav>
         <div className="ml-auto flex items-center gap-3">
-          <Link to="/share" state={state} className="primary compact">
+          <Link
+            to={shareHref(
+              location.pathname === "/" &&
+                new URLSearchParams(location.search).get("view") === "sites"
+                ? "sites"
+                : "update",
+              location.pathname === "/"
+                ? new URLSearchParams(location.search).get("tag")
+                : null,
+            )}
+            state={state}
+            className="primary compact"
+          >
             <Plus size={16} />
             <span>Share</span>
           </Link>

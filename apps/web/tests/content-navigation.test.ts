@@ -5,6 +5,7 @@ import {
   publicContentParams,
   validOrigin,
   retiredEcosystemPath,
+  shareHref,
 } from "../src/shared/content-navigation";
 describe("content navigation", () => {
   it("preserves following when selecting formats, and clears retired filters and cursors", () => {
@@ -92,11 +93,7 @@ describe("content navigation", () => {
     });
   });
   it("recognizes old format/topic URLs and keeps profile reads public and scoped to the displayed owner", () => {
-    for (const search of [
-      "?type=website",
-      "?tag=design",
-      "?kind=update&type=article",
-    ]) {
+    for (const search of ["?type=website", "?kind=update&type=article"]) {
       expect(contentKind(new URLSearchParams(search))).toBe("work");
       expect(publicContentParams(search).get("kind")).toBe("work");
     }
@@ -114,5 +111,60 @@ describe("content navigation", () => {
       validOrigin({ path: "/me/content?kind=work", index: 2, key: "source" })
         ?.label,
     ).toBe("My content");
+  });
+  it("keeps shared tags across categories and formats, and separates the fixed main tabs", () => {
+    expect(contentKind(new URLSearchParams("tag=design"))).toBe("all");
+    expect(Object.fromEntries(publicContentParams("?tag=design"))).toEqual({
+      tag: "design",
+    });
+    const tagged = contentHref(
+      "/",
+      "?view=following&cursor=old",
+      "tab",
+      "tag:design",
+    );
+    expect(tagged).toBe("/?tag=design");
+    expect(contentHref("/", "?tag=design&cursor=old", "kind", "update")).toBe(
+      "/?tag=design&kind=update",
+    );
+    expect(contentHref("/", "?tag=design&kind=update", "type", "article")).toBe(
+      "/?tag=design&kind=work&type=article",
+    );
+    expect(
+      contentHref("/", "?tag=design&kind=work&type=article", "kind", "all"),
+    ).toBe("/?tag=design");
+    expect(contentHref("/", "?tag=design&cursor=old", "tab", "following")).toBe(
+      "/?view=following",
+    );
+    expect(
+      contentHref("/", "?tag=design&view=following", "tab", "latest"),
+    ).toBe("/");
+    expect(shareHref("work", "design")).toBe("/publish?tag=design");
+    expect(shareHref("help", "design")).toBe("/share?kind=help&tag=design");
+  });
+  it("opens Sites without stale filters and returns to unrestricted main tabs", () => {
+    expect(
+      contentHref(
+        "/",
+        "?tag=design&view=following&kind=help&help=open&cursor=old",
+        "tab",
+        "sites",
+      ),
+    ).toBe("/?view=sites");
+    expect(contentKind(new URLSearchParams("view=sites"))).toBe("work");
+    expect(Object.fromEntries(publicContentParams("?view=sites"))).toEqual({
+      view: "sites",
+      kind: "work",
+      type: "website",
+    });
+    const sites = "?view=sites&kind=work&type=website&cursor=old";
+    expect(contentHref("/", sites, "tab", "latest")).toBe("/");
+    expect(contentHref("/", sites, "tab", "following")).toBe(
+      "/?view=following",
+    );
+    expect(contentHref("/", sites, "tab", "tag:design")).toBe("/?tag=design");
+    expect(shareHref("sites")).toBe("/publish?from=sites");
+    expect(shareHref("sites", "design")).toBe("/publish?from=sites&tag=design");
+    expect(validOrigin({ path: "/?view=sites" })?.path).toBe("/?view=sites");
   });
 });

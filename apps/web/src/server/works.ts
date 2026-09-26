@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
 import type { Database } from "./database";
-import { tags, type WorkRow, type RevisionRow } from "./schema";
+import type { WorkRow, RevisionRow } from "./schema";
+import { catalog, validateTags } from "./tags";
 import { type Actor, audit, dailyBudget, profileSql } from "./auth";
 import { requireValue } from "./errors";
 import { id } from "./crypto";
@@ -13,25 +13,13 @@ import {
   workTypes,
 } from "../shared/contracts";
 
-export async function catalog(db: Database) {
-  return db.orm
-    .select({ id: tags.id, name: tags.name })
-    .from(tags)
-    .where(eq(tags.enabled, true));
-}
 export async function validateContent(
   db: Database,
   a: Actor,
   body: WorkContent,
   publishing = false,
 ) {
-  const available = await catalog(db);
-  requireValue(
-    body.tagIds.every((t) => available.some((v) => v.id === t)),
-    400,
-    "VALIDATION_ERROR",
-    "Choose existing, enabled topics.",
-  );
+  await validateTags(db, body.tagIds);
   const ids = mediaIds(body);
   if (ids.length) {
     const found = await db.query<{ id: string; status: string }>(

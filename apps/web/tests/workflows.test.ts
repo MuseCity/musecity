@@ -34,7 +34,7 @@ describe("real PostgreSQL business workflows, injected test identity and object 
   it("uses only the bearer identity when Privy also attaches a browser cookie", async () => {
     const f = fixture();
     const headers = { Cookie: "privy-token=fixture:bob" };
-    const tabs = ["all", "tag:design", "type:article"];
+    const tabs = [...defaultTabs, "tag:design"];
     expect(
       (
         await f.call("/me/feed-preferences", {
@@ -66,13 +66,12 @@ describe("real PostgreSQL business workflows, injected test identity and object 
     const f = fixture();
     const save = await f.call("/me/feed-preferences", {
       method: "PUT",
-      body: { tabs: ["all", "tag:design", "type:article"] },
+      body: { tabs: [...defaultTabs, "tag:design"] },
     });
     expect(save.status).toBe(200);
     expect((await f.call("/me/feed-preferences")).data.tabs).toEqual([
-      "all",
+      ...defaultTabs,
       "tag:design",
-      "type:article",
     ]);
     expect(
       (await f.call("/me/feed-preferences", { token: "fixture:bob" })).data

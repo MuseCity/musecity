@@ -1,6 +1,13 @@
 import { ContentBack, useContentSource } from "./content-navigation";
 import { useState } from "react";
-import { useNavigate, useBlocker, useBeforeUnload } from "react-router";
+import {
+  useNavigate,
+  useBlocker,
+  useBeforeUnload,
+  useSearchParams,
+} from "react-router";
+import { TopicPicker } from "./topic-picker";
+import { useTopics } from "./catalog";
 import { UploadImage } from "./upload";
 import { MediaImage } from "./media-image";
 import { Notice, Dialog } from "./ui";
@@ -24,6 +31,8 @@ export function PostEditor({
   const api = useApi(),
     navigate = useNavigate(),
     state = useContentSource();
+  const [params] = useSearchParams(),
+    topics = useTopics();
   const [body, setBody] = useState<PostContent>(
     existing
       ? {
@@ -32,8 +41,18 @@ export function PostEditor({
           title: existing.title,
           expectedOutcome: existing.expectedOutcome,
           mediaIds: existing.mediaIds,
+          tagIds: existing.tagIds,
         }
-      : { kind, text: "", title: "", expectedOutcome: "", mediaIds: [] },
+      : {
+          kind,
+          text: "",
+          title: "",
+          expectedOutcome: "",
+          mediaIds: [],
+          tagIds: topics
+            .filter((t) => t.id === params.get("tag"))
+            .map((t) => t.id),
+        },
   );
   const [busy, setBusy] = useState(false),
     [uploading, setUploading] = useState(false),
@@ -155,6 +174,11 @@ export function PostEditor({
             }}
           />
         )}
+        <TopicPicker
+          value={body.tagIds}
+          onChange={(tagIds) => update({ tagIds })}
+          disabled={busy || uploading}
+        />
         <p className="text-muted text-xs">
           {existing
             ? "Saving changes updates the public content immediately."

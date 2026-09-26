@@ -953,7 +953,6 @@ describe("neighborhood workflows through the real local PostgreSQL API", () => {
       "ecosystem=unknown",
       "kind=unknown",
       "view=unknown",
-      "type=article&tag=design",
       "cursor=nope",
       "tag=unknown",
     ])

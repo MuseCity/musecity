@@ -5,6 +5,7 @@ import {
   useContentReturn,
 } from "../components/content-navigation";
 import { useTopics } from "../components/catalog";
+import { TopicPicker } from "../components/topic-picker";
 import { useEffect, useState } from "react";
 import {
   Link,
@@ -54,9 +55,17 @@ function Editor({ id }: { id?: string }) {
   const api = useApi();
   const navigate = useNavigate();
   const location = useLocation();
+  const siteEntry =
+    !id && new URLSearchParams(location.search).get("from") === "sites";
   const state = useContentSource();
   const back = useContentReturn("/me/content?kind=work");
-  const [body, setBody] = useState<WorkContent>(blank);
+  const [body, setBody] = useState<WorkContent>(() => ({
+    ...blank,
+    ...(siteEntry ? { aiDeclaration: true } : {}),
+    tagIds: topics
+      .filter((t) => t.id === new URLSearchParams(location.search).get("tag"))
+      .map((t) => t.id),
+  }));
   const [saved, setSaved] = useState<WorkView | null>(null);
   const [loading, setLoading] = useState(!!id);
   const [error, setError] = useState("");
@@ -131,6 +140,10 @@ function Editor({ id }: { id?: string }) {
   async function save(publish: boolean) {
     setError("");
     setMessage("");
+    if (publish && siteEntry && body.aiDeclaration !== true) {
+      setError("Choose ‘AI helped create this’ to publish in Sites.");
+      return;
+    }
     const parsed = workSchema.safeParse({
       ...body,
       aiTools: body.aiTools.map((t) => t.trim()).filter(Boolean),
@@ -230,17 +243,23 @@ function Editor({ id }: { id?: string }) {
         <div>
           <ContentBack fallback="/me/content?kind=work" />
           <h1 className="mt-3">
-            {saved ? "Your creation" : "Share something you made."}
+            {saved
+              ? "Your creation"
+              : siteEntry
+                ? "Share your AI-built website."
+                : "Share something you made."}
           </h1>
           <p>
             {saved?.status === "published"
               ? "Changes stay private until you publish again."
-              : "A small idea can make someone’s day."}
+              : siteEntry
+                ? "Add your website link, a cover, and how you built it."
+                : "A small idea can make someone’s day."}
           </p>
         </div>
         {saved && <span className="status-chip">{saved.status}</span>}
       </div>
-      {!id && <ShareOptions kind="work" />}
+      {!id && !siteEntry && <ShareOptions kind="work" />}
       {saved?.restricted && (
         <Notice>
           This creation is hidden by moderation. Editing and publishing are
@@ -248,25 +267,27 @@ function Editor({ id }: { id?: string }) {
         </Notice>
       )}
       <fieldset disabled={busy || !!saved?.restricted} className="form-stack">
-        <div className="type-picker">
-          {(
-            [
-              ["website", Globe, "Website"],
-              ["video", Video, "Video"],
-              ["image", ImageIcon, "Images"],
-              ["article", FileText, "Article"],
-            ] as const
-          ).map(([type, Icon, label]) => (
-            <button
-              key={type}
-              className={body.type === type ? "active" : ""}
-              onClick={() => changeType(type)}
-            >
-              <Icon size={16} />
-              {label}
-            </button>
-          ))}
-        </div>
+        {!siteEntry && (
+          <div className="type-picker">
+            {(
+              [
+                ["website", Globe, "Website"],
+                ["video", Video, "Video"],
+                ["image", ImageIcon, "Images"],
+                ["article", FileText, "Article"],
+              ] as const
+            ).map(([type, Icon, label]) => (
+              <button
+                key={type}
+                className={body.type === type ? "active" : ""}
+                onClick={() => changeType(type)}
+              >
+                <Icon size={16} />
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
         <label className="field">
           Title
           <input
@@ -389,34 +410,10 @@ function Editor({ id }: { id?: string }) {
             )}
           </div>
         )}
-        <div>
-          <label className="field mb-3">
-            Topics <span className="field-note">Choose up to 5.</span>
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {topics.map((t) => (
-              <button
-                key={t.id}
-                aria-pressed={body.tagIds.includes(t.id)}
-                className={
-                  "chip " + (body.tagIds.includes(t.id) ? "chosen" : "")
-                }
-                disabled={
-                  !body.tagIds.includes(t.id) && body.tagIds.length >= 5
-                }
-                onClick={() =>
-                  update({
-                    tagIds: body.tagIds.includes(t.id)
-                      ? body.tagIds.filter((id) => id !== t.id)
-                      : [...body.tagIds, t.id],
-                  })
-                }
-              >
-                {t.name}
-              </button>
-            ))}
-          </div>
-        </div>
+        <TopicPicker
+          value={body.tagIds}
+          onChange={(tagIds) => update({ tagIds })}
+        />
         <label className="field">
           Made with{" "}
           <span className="field-note">
@@ -430,7 +427,11 @@ function Editor({ id }: { id?: string }) {
         </label>
         <label className="field">
           AI use{" "}
-          <span className="field-note">Optional · your own declaration</span>
+          <span className="field-note">
+            {siteEntry
+              ? "Your own declaration · required for Sites"
+              : "Optional · your own declaration"}
+          </span>
           <select
             value={
               body.aiDeclaration === undefined ? "" : String(body.aiDeclaration)

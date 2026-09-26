@@ -98,6 +98,9 @@ describe("MCP over Streamable HTTP with the real local PostgreSQL API", () => {
       const tools = await client.listTools();
       expect(tools.tools).toHaveLength(19);
       expect(tools.tools.map((t) => t.name)).toContain("create_creation");
+      const sites = await call(client, "list_feed", { view: "sites" });
+      expect(sites.data.httpStatus).toBe(200);
+      expect(sites.response.isError).not.toBe(true);
       for (const name of ["list_feed", "list_neighbors"]) {
         const tool = tools.tools.find((t) => t.name === name)!;
         expect(tool.inputSchema.properties).not.toHaveProperty("ecosystem");
@@ -139,6 +142,55 @@ describe("MCP over Streamable HTTP with the real local PostgreSQL API", () => {
         expect.stringContaining('"openapi":"3.1.0"'),
       );
     });
+
+  it("publishes to another account's shared tag while denying Agent catalog management", async () => {
+    const f = fixture();
+    const tag = (
+      await f.call("/tags", {
+        method: "POST",
+        token: "fixture:bob",
+        body: { name: "Music" },
+      })
+    ).data;
+    const agent = await activate(f, [...draftScopes, "community:post"]);
+    expect(
+      (
+        await f.call("/tags", {
+          token: agent.token,
+          method: "POST",
+          body: { name: "Agent tag" },
+        })
+      ).status,
+    ).toBe(403);
+    const client = await connect(f, agent.token);
+    const post = await call(client, "create_post", {
+      content: {
+        kind: "update",
+        text: "A shared composition",
+        tagIds: [tag.id],
+      },
+      idempotencyKey: crypto.randomUUID(),
+    });
+    expect(post.data.tagIds).toEqual([tag.id]);
+    expect(post.data.agent.id).toBe(agent.id);
+    const feed = await call(client, "list_feed", { tag: tag.id });
+    expect(feed.data.items.map((v: { id: string }) => v.id)).toEqual([
+      post.data.id,
+    ]);
+    const denied = await activate(f, draftScopes, "bob");
+    const deniedClient = await connect(f, denied.token);
+    expect(
+      (
+        await call(deniedClient, "create_post", {
+          content: { kind: "update", text: "No permission", tagIds: [tag.id] },
+          idempotencyKey: crypto.randomUUID(),
+        })
+      ).data.error.code,
+    ).toBe("SCOPE_DENIED");
+    expect((await client.listTools()).tools.map((t) => t.name)).not.toContain(
+      "create_tag",
+    );
+  });
 
   it("creates, reads and edits a private draft with REST-shared idempotency and publication permissions", async () => {
     const f = fixture();

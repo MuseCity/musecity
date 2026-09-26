@@ -1,4 +1,5 @@
 import { useContentSource } from "./content-navigation";
+import { TopicLinks } from "./topic-picker";
 import {
   createContext,
   useContext,
@@ -407,6 +408,7 @@ export function PostBody({
           ))}
         </div>
       )}
+      {!compact && <TopicLinks ids={post.tagIds} />}
     </div>
   );
 }
@@ -435,19 +437,15 @@ export function CommunityCard({ item }: { item: CommunityItem }) {
         </Link>
       )}
       <div className="card-actions">
+        <TopicLinks
+          ids={item.kind === "work" ? item.work.body.tagIds : item.post.tagIds}
+        />
         <Link state={state} to={url + "#conversation"}>
           <MessageCircle size={16} />
           {item.commentCount
             ? `${item.commentCount} ${item.commentCount === 1 ? "reply" : "replies"}`
-            : "Start a conversation"}
+            : "Reply"}
         </Link>
-        <span>
-          {item.kind === "work"
-            ? "Shared a creation"
-            : item.kind === "help"
-              ? "Neighbors helping neighbors"
-              : "Around musecity"}
-        </span>
       </div>
     </article>
   );

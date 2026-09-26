@@ -4,6 +4,7 @@ import {
   contentKind,
   contentKinds,
   validOrigin,
+  shareHref,
 } from "../shared/content-navigation";
 import { workTypes, typeLabels } from "../shared/contracts";
 import { MessageCircle, Handshake, Sparkles } from "lucide-react";
@@ -200,24 +201,20 @@ export function CreationFormats() {
 
 export function ShareOptions({ kind }: { kind: "work" | "update" | "help" }) {
   const state = useContentSource();
+  const location = useLocation(),
+    tag = new URLSearchParams(location.search).get("tag");
   return (
     <nav className="share-options" aria-label="What to share">
       {(
         [
-          ["update", "/share", MessageCircle, "Updates", "What’s happening?"],
-          ["work", "/publish", Sparkles, "Creations", "Show what you made"],
-          [
-            "help",
-            "/share?kind=help",
-            Handshake,
-            "Help requests",
-            "Ask for a hand",
-          ],
+          ["update", MessageCircle, "Updates", "What’s happening?"],
+          ["work", Sparkles, "Creations", "Show what you made"],
+          ["help", Handshake, "Help requests", "Ask for a hand"],
         ] as const
-      ).map(([key, to, Icon, label, description]) => (
+      ).map(([key, Icon, label, description]) => (
         <Link
           key={key}
-          to={to}
+          to={shareHref(key, tag)}
           state={state}
           replace
           className={kind === key ? "selected" : ""}
