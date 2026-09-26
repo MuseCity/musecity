@@ -1,0 +1,5 @@
+# Keep this file local. Never put secrets in VITE_* variables.
+PRIVY_APP_ID=
+PRIVY_APP_SECRET=
+# Optional for dev:cloud only: dedicated runtime role, never the postgres admin.
+SUPABASE_DATABASE_URL=

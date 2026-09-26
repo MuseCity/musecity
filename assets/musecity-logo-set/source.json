@@ -1,0 +1,51 @@
+{
+  "source": "https://chatgpt.com/g/g-p-68c82c218dbc8191992ee70310ee05b3-bang-mang/c/6ab5a91f-3140-83e8-a9a3-435e750a097a",
+  "retrieved": "2026-09-25",
+  "processing": "Original PNG bytes copied without recompression or edits; alpha retained.",
+  "files": [
+    {
+      "path": "assets/musecity-logo-set/originals/horizontal.png",
+      "publicPath": "apps/web/public/brand/horizontal.png",
+      "sourceImage": 1,
+      "width": 1536,
+      "height": 1024,
+      "format": "PNG",
+      "alpha": true,
+      "bytes": 1580251,
+      "sha256": "d9da5caa679e61c503ffc33d993f9624a158f6f821228b88157d0134a01f4d49"
+    },
+    {
+      "path": "assets/musecity-logo-set/originals/icon.png",
+      "publicPath": "apps/web/public/brand/icon.png",
+      "sourceImage": 2,
+      "width": 1254,
+      "height": 1254,
+      "format": "PNG",
+      "alpha": true,
+      "bytes": 1833692,
+      "sha256": "80ee73221f53ecec88b005ded458f153e39e546ce306a5e9d832c44eacbb6e7a"
+    },
+    {
+      "path": "assets/musecity-logo-set/originals/crest.png",
+      "publicPath": "apps/web/public/brand/crest.png",
+      "sourceImage": 3,
+      "width": 1254,
+      "height": 1254,
+      "format": "PNG",
+      "alpha": true,
+      "bytes": 1764489,
+      "sha256": "1573702b97d6d660e3d6a76c40ae53b3bfb127be51c94a85cbfa50eddee601d4"
+    },
+    {
+      "path": "assets/musecity-logo-set/originals/vertical.png",
+      "publicPath": "apps/web/public/brand/vertical.png",
+      "sourceImage": 4,
+      "width": 1122,
+      "height": 1402,
+      "format": "PNG",
+      "alpha": true,
+      "bytes": 1396916,
+      "sha256": "ee5c84cf32e36ac924fc799fbd9046311c6083d26d50fc719ad9383f71dbc9ec"
+    }
+  ]
+}

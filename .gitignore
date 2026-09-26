@@ -1,0 +1,12 @@
+node_modules/
+.local/
+.dev.vars
+.env
+.env.*
+!.env.example
+.wrangler/
+.react-router/
+build/
+test-results/
+playwright-report/
+.DS_Store

@@ -1,0 +1,811 @@
+import type { Database } from "./database";
+import { profile, profileSql, audit, dailyBudget, type Actor } from "./auth";
+import { id } from "./crypto";
+import { requireValue } from "./errors";
+import { ownMedia } from "./media";
+import { catalog } from "./works";
+import type { AccountRow } from "./schema";
+import {
+  workTypes,
+  type PostContent,
+  type PostView,
+  type CommunityItem,
+  type Page,
+  type NeighborProfile,
+  type CommentView,
+  type CommunityNotification,
+  type ReportView,
+  type Profile,
+  type WorkView,
+} from "../shared/contracts";
+
+type TargetKind = "work" | "post";
+const agentSql = (alias: string) =>
+  `CASE WHEN ${alias}.id IS NULL THEN NULL ELSE jsonb_build_object('id',${alias}.id,'name',${alias}.name) END`;
+export const unblockedSql = (owner: string, viewer: string) =>
+  `NOT EXISTS(SELECT 1 FROM musecity.blocks b WHERE (b.blocker_id=${viewer} AND b.blocked_id=${owner}) OR (b.blocked_id=${viewer} AND b.blocker_id=${owner}))`;
+export async function requireUnblocked(
+  db: Database,
+  viewer: string,
+  owner: string,
+) {
+  const blocked = await db.one(
+    "SELECT 1 FROM musecity.blocks WHERE (blocker_id=$1 AND blocked_id=$2) OR (blocker_id=$2 AND blocked_id=$1)",
+    [viewer, owner],
+  );
+  requireValue(
+    !blocked,
+    404,
+    "NOT_FOUND",
+    "This content or neighbor is unavailable.",
+  );
+}
+export function decodeCursor(raw: string | null, filter: string) {
+  if (!raw) return null;
+  let c: { time: string; id: string; filter: string } | undefined;
+  try {
+    c = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(
+        Uint8Array.from(atob(raw), (v) => v.charCodeAt(0)),
+      ),
+    );
+  } catch {
+    /* validated below */
+  }
+  requireValue(
+    c &&
+      typeof c.id === "string" &&
+      typeof c.time === "string" &&
+      Number.isFinite(Date.parse(c.time)) &&
+      c.filter === filter,
+    400,
+    "INVALID_CURSOR",
+    "Reload this list to continue.",
+  );
+  return c;
+}
+export function page<T extends { id: string }>(
+  rows: T[],
+  filter: string,
+  time: (row: T) => string,
+): Page<T> {
+  const items = rows.slice(0, 20),
+    last = items.at(-1);
+  return {
+    items,
+    nextCursor:
+      rows.length > 20 && last
+        ? btoa(
+            String.fromCharCode(
+              ...new TextEncoder().encode(
+                JSON.stringify({ id: last.id, time: time(last), filter }),
+              ),
+            ),
+          )
+        : null,
+  };
+}
+function rejectRetiredFilter(params: URLSearchParams) {
+  requireValue(
+    !params.has("ecosystem"),
+    400,
+    "INVALID_FILTER",
+    "Ecosystem filtering is no longer supported. Remove ecosystem and reload the list.",
+  );
+}
+export async function neighbors(
+  db: Database,
+  params: URLSearchParams,
+  viewer?: Actor,
+): Promise<Page<Profile>> {
+  rejectRetiredFilter(params);
+  const query = params.get("q")?.trim() ?? "";
+  requireValue(
+    query.length <= 120,
+    400,
+    "INVALID_FILTER",
+    "Search is too long.",
+  );
+  const filter = JSON.stringify(["neighbors", query, viewer?.account.id]),
+    cursor = decodeCursor(params.get("cursor"), filter);
+  const rows = await db.query<{ profile: Profile }>(
+    `SELECT ${profileSql("a")} AS profile FROM musecity.accounts a
+    WHERE a.status='active' AND a.joined_at IS NOT NULL
+    AND ($1='' OR strpos(lower(a.name||' '||a.handle||' '||a.bio||' '||a.working_on||' '||a.can_help),lower($1))>0)
+    AND ${unblockedSql("a.id", "$2")} AND ($3::timestamptz IS NULL OR (a.joined_at,a.id)<($3,$4))
+    ORDER BY a.joined_at DESC,a.id DESC LIMIT 21`,
+    [
+      query,
+      viewer?.account.id ?? null,
+      cursor?.time ?? null,
+      cursor?.id ?? null,
+    ],
+  );
+  return page(
+    rows.map((r) => r.profile),
+    filter,
+    (r) => r.joinedAt!,
+  );
+}
+export async function neighbor(
+  db: Database,
+  handle: string,
+  viewer?: Actor,
+): Promise<NeighborProfile> {
+  const a = await db.one<AccountRow>(
+    "SELECT * FROM musecity.accounts WHERE handle=$1 AND status='active'",
+    [handle],
+  );
+  requireValue(a, 404, "NOT_FOUND", "Neighbor not found.");
+  if (viewer) await requireUnblocked(db, viewer.account.id, a.id);
+  const agents = a.joined_at
+    ? await db.query<{ id: string; name: string; description: string }>(
+        "SELECT id,name,description FROM musecity.agents WHERE owner_account_id=$1 AND public_visible AND status<>'revoked' ORDER BY created_at,id",
+        [a.id],
+      )
+    : [];
+  return { ...profile(a), agents };
+}
+export async function target(
+  db: Database,
+  kind: TargetKind,
+  targetId: string,
+  viewer?: Actor,
+  lock = false,
+) {
+  const row = await db.one<{ owner_account_id: string }>(
+    kind === "work"
+      ? `SELECT w.owner_account_id FROM musecity.works w JOIN musecity.accounts a ON a.id=w.owner_account_id WHERE w.id=$1 AND w.status='published' AND NOT w.blocked AND a.status='active' ${lock ? "FOR SHARE OF w" : ""}`
+      : `SELECT p.owner_account_id FROM musecity.posts p JOIN musecity.accounts a ON a.id=p.owner_account_id WHERE p.id=$1 AND NOT p.deleted AND NOT p.blocked AND a.status='active' ${lock ? "FOR SHARE OF p" : ""}`,
+    [targetId],
+  );
+  requireValue(row, 404, "NOT_FOUND", "This content is unavailable.");
+  if (viewer)
+    await requireUnblocked(db, viewer.account.id, row.owner_account_id);
+  return row.owner_account_id;
+}
+const postSelect = `SELECT p.id,p.kind,p.text,p.title,p.expected_outcome AS "expectedOutcome",p.media_ids AS "mediaIds",p.help_status AS "helpStatus",p.revision,p.created_at AS "createdAt",p.updated_at AS "updatedAt",${profileSql("a")} AS owner,${agentSql("g")} AS agent
+ FROM musecity.posts p JOIN musecity.accounts a ON a.id=p.owner_account_id LEFT JOIN musecity.agents g ON g.id=p.agent_id`;
+export async function postView(
+  db: Database,
+  postId: string,
+  viewer?: Actor,
+): Promise<PostView> {
+  await target(db, "post", postId, viewer);
+  const row = await db.one<PostView>(postSelect + " WHERE p.id=$1", [postId]);
+  requireValue(row, 404, "NOT_FOUND", "Post unavailable.");
+  return JSON.parse(JSON.stringify(row));
+}
+export async function communityFeed(
+  db: Database,
+  params: URLSearchParams,
+  viewer?: Actor,
+): Promise<Page<CommunityItem>> {
+  rejectRetiredFilter(params);
+  const view = params.get("view") ?? "latest",
+    kind = params.get("kind"),
+    type = params.get("type"),
+    tag = params.get("tag"),
+    owner = params.get("owner"),
+    help = params.get("help");
+  requireValue(
+    ["latest", "following"].includes(view) &&
+      (!kind || ["work", "update", "help"].includes(kind)) &&
+      (!type || workTypes.includes(type as (typeof workTypes)[number])) &&
+      !(type && tag) &&
+      (!help || help === "open"),
+    400,
+    "INVALID_FILTER",
+    "Choose valid community filters.",
+  );
+  requireValue(
+    view !== "following" || viewer,
+    401,
+    "AUTH_REQUIRED",
+    "Sign in to see your neighbors.",
+  );
+  if (tag)
+    requireValue(
+      (await catalog(db)).some((t) => t.id === tag),
+      400,
+      "INVALID_FILTER",
+      "Unknown topic.",
+    );
+  const filter = JSON.stringify([
+      view,
+      kind,
+      type,
+      tag,
+      owner,
+      help,
+      viewer?.account.id,
+    ]),
+    cursor = decodeCursor(params.get("cursor"), filter);
+  const rows = await db.query<{
+    id: string;
+    kind: "work" | "update" | "help";
+    createdAt: Date;
+    commentCount: number;
+    payload: unknown;
+    owner: Profile;
+    agent: { id: string; name: string } | null;
+  }>(
+    `
+ WITH entries AS (
+ SELECT w.id,'work' AS kind,w.owner_account_id,w.created_by_agent_id AS agent_id,w.first_published_at AS created_at,
+ jsonb_build_object('workId',w.id,'revisionId',r.id,'publishedRevisionId',r.id,'status',w.status,
+ 'body',r.payload-'articleDocument'||jsonb_build_object('description',left(COALESCE(NULLIF(r.payload->>'description',''),r.payload->>'title',''),240)),
+ 'submittedBy',${agentSql("s")},'publishedBy',${agentSql("p")},'publishedAt',w.published_at,'updatedAt',w.updated_at) AS payload
+ FROM musecity.works w JOIN musecity.work_revisions r ON r.id=w.published_revision_id
+ LEFT JOIN musecity.agents s ON s.id=w.created_by_agent_id LEFT JOIN musecity.agents p ON p.id=w.published_by_agent_id
+ WHERE w.status='published' AND NOT w.blocked AND ($1::text IS NULL OR r.payload->>'type'=$1) AND ($2::text IS NULL OR $2=ANY(r.tag_ids))
+ UNION ALL
+ SELECT p.id,p.kind,p.owner_account_id,p.agent_id,p.created_at,
+ jsonb_build_object('id',p.id,'kind',p.kind,'text',p.text,'title',p.title,'expectedOutcome',p.expected_outcome,'mediaIds',p.media_ids,'helpStatus',p.help_status,'revision',p.revision,'createdAt',p.created_at,'updatedAt',p.updated_at)
+ FROM musecity.posts p WHERE NOT p.deleted AND NOT p.blocked AND $1::text IS NULL AND $2::text IS NULL AND ($3::text IS NULL OR (p.kind='help' AND p.help_status='open'))
+ ) SELECT e.id,e.kind,e.created_at AS "createdAt",e.payload,${profileSql("a")} AS owner,${agentSql("g")} AS agent,
+ (SELECT count(*)::integer FROM musecity.comments c JOIN musecity.accounts ca ON ca.id=c.owner_account_id WHERE (c.work_id=e.id OR c.post_id=e.id) AND NOT c.deleted AND NOT c.blocked AND ca.status='active' AND ${unblockedSql("ca.id", "$4")}) AS "commentCount"
+ FROM entries e JOIN musecity.accounts a ON a.id=e.owner_account_id LEFT JOIN musecity.agents g ON g.id=e.agent_id
+ WHERE a.status='active' AND ${unblockedSql("a.id", "$4")}
+ AND ($5::text IS NULL OR e.kind=$5) AND ($6::text IS NULL OR a.handle=$6)
+ AND ($7='latest' OR EXISTS(SELECT 1 FROM musecity.follows f WHERE f.follower_id=$4 AND f.followed_id=a.id))
+ AND ($3::text IS NULL OR e.kind='help') AND ($8::timestamptz IS NULL OR (e.created_at,e.id)<($8,$9))
+ ORDER BY e.created_at DESC,e.id DESC LIMIT 21`,
+    [
+      type,
+      tag,
+      help,
+      viewer?.account.id ?? null,
+      kind,
+      owner,
+      view,
+      cursor?.time ?? null,
+      cursor?.id ?? null,
+    ],
+  );
+  const items = rows.map((r) => {
+    const common = {
+      id: r.id,
+      createdAt: r.createdAt.toISOString(),
+      commentCount: r.commentCount,
+    };
+    return r.kind === "work"
+      ? {
+          ...common,
+          kind: "work" as const,
+          work: { ...(r.payload as Omit<WorkView, "owner">), owner: r.owner },
+        }
+      : {
+          ...common,
+          kind: r.kind,
+          post: { ...(r.payload as PostView), owner: r.owner, agent: r.agent },
+        };
+  }) as CommunityItem[];
+  return page(items, filter, (r) => r.createdAt);
+}
+async function validateImages(db: Database, a: Actor, ids: string[]) {
+  for (const mediaId of ids)
+    requireValue(
+      (await ownMedia(db, a, mediaId)).status === "ready",
+      409,
+      "MEDIA_NOT_READY",
+      "Wait for all images to finish uploading.",
+    );
+}
+export async function savePost(
+  db: Database,
+  a: Actor,
+  content: PostContent,
+  postId?: string,
+  revision?: number,
+) {
+  await validateImages(db, a, content.mediaIds);
+  if (postId) {
+    const existing = await db.one<{
+      revision: number;
+      blocked: boolean;
+      kind: string;
+    }>(
+      "SELECT revision,blocked,kind FROM musecity.posts WHERE id=$1 AND owner_account_id=$2 AND ($3::text IS NULL OR agent_id=$3) AND NOT deleted FOR UPDATE",
+      [postId, a.account.id, a.agent?.id ?? null],
+    );
+    requireValue(existing, 404, "NOT_FOUND", "Post not found.");
+    requireValue(
+      !existing.blocked,
+      423,
+      "CONTENT_BLOCKED",
+      "This post is hidden by moderation.",
+    );
+    requireValue(
+      existing.revision === revision,
+      409,
+      "REVISION_CONFLICT",
+      "This post changed. Reload before editing.",
+    );
+    requireValue(
+      existing.kind === content.kind,
+      400,
+      "VALIDATION_ERROR",
+      "Keep the original post type.",
+    );
+    await db.query(
+      "UPDATE musecity.posts SET text=$2,title=$3,expected_outcome=$4,media_ids=$5,revision=revision+1,updated_at=date_trunc('milliseconds',clock_timestamp()) WHERE id=$1",
+      [
+        postId,
+        content.text,
+        content.title,
+        content.expectedOutcome,
+        content.mediaIds,
+      ],
+    );
+  } else {
+    await dailyBudget(db, a, "publication");
+    postId = id("post");
+    await db.query(
+      "INSERT INTO musecity.posts(id,owner_account_id,agent_id,kind,text,title,expected_outcome,media_ids,help_status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+      [
+        postId,
+        a.account.id,
+        a.agent?.id ?? null,
+        content.kind,
+        content.text,
+        content.title,
+        content.expectedOutcome,
+        content.mediaIds,
+        content.kind === "help" ? "open" : null,
+      ],
+    );
+  }
+  await audit(db, a, revision ? "post.edit" : "post.publish", postId);
+  return postView(db, postId, a);
+}
+export async function changePost(
+  db: Database,
+  a: Actor,
+  postId: string,
+  revision: number,
+  status?: string,
+) {
+  const row = await db.one<{
+    revision: number;
+    kind: string;
+    blocked: boolean;
+  }>(
+    "SELECT revision,kind,blocked FROM musecity.posts WHERE id=$1 AND owner_account_id=$2 AND NOT deleted FOR UPDATE",
+    [postId, a.account.id],
+  );
+  requireValue(row, 404, "NOT_FOUND", "Post not found.");
+  requireValue(
+    row.revision === revision,
+    409,
+    "REVISION_CONFLICT",
+    "Reload this post before changing it.",
+  );
+  if (status) {
+    requireValue(
+      !row.blocked,
+      423,
+      "CONTENT_BLOCKED",
+      "This post is hidden by moderation.",
+    );
+    requireValue(
+      row.kind === "help",
+      400,
+      "VALIDATION_ERROR",
+      "Only requests have a progress status.",
+    );
+    await db.query(
+      "UPDATE musecity.posts SET help_status=$2,revision=revision+1,updated_at=date_trunc('milliseconds',clock_timestamp()) WHERE id=$1",
+      [postId, status],
+    );
+  } else
+    await db.query(
+      "UPDATE musecity.posts SET deleted=true,revision=revision+1 WHERE id=$1",
+      [postId],
+    );
+  await audit(db, a, status ? "post.status" : "post.delete", postId);
+  return status ? postView(db, postId, a) : { deleted: true };
+}
+export async function relation(db: Database, a: Actor, accountId: string) {
+  return {
+    following: !!(await db.one(
+      "SELECT 1 FROM musecity.follows WHERE follower_id=$1 AND followed_id=$2",
+      [a.account.id, accountId],
+    )),
+    blocked: !!(await db.one(
+      "SELECT 1 FROM musecity.blocks WHERE blocker_id=$1 AND blocked_id=$2",
+      [a.account.id, accountId],
+    )),
+  };
+}
+async function notify(
+  db: Database,
+  a: Actor,
+  recipient: string,
+  kind: string,
+  targetKind: string,
+  targetId: string,
+  eventKey: string,
+  commentId?: string,
+) {
+  if (recipient === a.account.id) return;
+  if (
+    await db.one(
+      "SELECT 1 FROM musecity.blocks WHERE (blocker_id=$1 AND blocked_id=$2) OR (blocker_id=$2 AND blocked_id=$1)",
+      [recipient, a.account.id],
+    )
+  )
+    return;
+  await db.query(
+    "INSERT INTO musecity.notifications(id,recipient_id,actor_account_id,actor_agent_id,kind,target_kind,target_id,event_key,comment_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(recipient_id,event_key) DO NOTHING",
+    [
+      id("ntf"),
+      recipient,
+      a.account.id,
+      a.agent?.id ?? null,
+      kind,
+      targetKind,
+      targetId,
+      eventKey,
+      commentId ?? null,
+    ],
+  );
+}
+export async function follow(
+  db: Database,
+  a: Actor,
+  accountId: string,
+  enabled: boolean,
+) {
+  requireValue(
+    a.account.id !== accountId,
+    400,
+    "VALIDATION_ERROR",
+    "Choose another neighbor.",
+  );
+  if (enabled) {
+    requireValue(
+      await db.one(
+        "SELECT 1 FROM musecity.accounts WHERE id=$1 AND joined_at IS NOT NULL AND status='active'",
+        [accountId],
+      ),
+      404,
+      "NOT_FOUND",
+      "Neighbor not found.",
+    );
+    await requireUnblocked(db, a.account.id, accountId);
+    const rows = await db.query(
+      "INSERT INTO musecity.follows(follower_id,followed_id) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING followed_id",
+      [a.account.id, accountId],
+    );
+    if (rows.length)
+      await notify(
+        db,
+        a,
+        accountId,
+        "follow",
+        "account",
+        a.account.id,
+        "follow:" + a.account.id,
+      );
+  } else
+    await db.query(
+      "DELETE FROM musecity.follows WHERE follower_id=$1 AND followed_id=$2",
+      [a.account.id, accountId],
+    );
+  return relation(db, a, accountId);
+}
+export async function block(
+  db: Database,
+  a: Actor,
+  accountId: string,
+  enabled: boolean,
+) {
+  requireValue(
+    a.account.id !== accountId,
+    400,
+    "VALIDATION_ERROR",
+    "Choose another account.",
+  );
+  requireValue(
+    await db.one("SELECT 1 FROM musecity.accounts WHERE id=$1", [accountId]),
+    404,
+    "NOT_FOUND",
+    "Account not found.",
+  );
+  if (enabled) {
+    await db.query(
+      "INSERT INTO musecity.blocks(blocker_id,blocked_id) VALUES($1,$2) ON CONFLICT DO NOTHING",
+      [a.account.id, accountId],
+    );
+    await db.query(
+      "DELETE FROM musecity.follows WHERE (follower_id=$1 AND followed_id=$2) OR (follower_id=$2 AND followed_id=$1)",
+      [a.account.id, accountId],
+    );
+  } else
+    await db.query(
+      "DELETE FROM musecity.blocks WHERE blocker_id=$1 AND blocked_id=$2",
+      [a.account.id, accountId],
+    );
+  return relation(db, a, accountId);
+}
+export async function comments(
+  db: Database,
+  kind: TargetKind,
+  targetId: string,
+  params: URLSearchParams,
+  viewer?: Actor,
+): Promise<Page<CommentView>> {
+  await target(db, kind, targetId, viewer);
+  const filter = JSON.stringify([
+      "comments",
+      kind,
+      targetId,
+      viewer?.account.id,
+    ]),
+    cursor = decodeCursor(params.get("cursor"), filter);
+  const rows = await db.query<CommentView>(
+    `SELECT c.id,${profileSql("a")} AS owner,${agentSql("g")} AS agent,CASE WHEN c.deleted THEN '' ELSE c.text END AS text,c.deleted,c.parent_id AS "parentId",c.created_at AS "createdAt"
+    FROM musecity.comments c JOIN musecity.accounts a ON a.id=c.owner_account_id LEFT JOIN musecity.agents g ON g.id=c.agent_id
+    WHERE c.${kind === "work" ? "work_id" : "post_id"}=$1 AND NOT c.blocked AND a.status='active' AND ${unblockedSql("a.id", "$2")}
+    AND ($3::timestamptz IS NULL OR (c.created_at,c.id)>($3,$4)) ORDER BY c.created_at,c.id LIMIT 21`,
+    [
+      targetId,
+      viewer?.account.id ?? null,
+      cursor?.time ?? null,
+      cursor?.id ?? null,
+    ],
+  );
+  const items = JSON.parse(JSON.stringify(rows)) as CommentView[];
+  return page(items, filter, (r) => r.createdAt);
+}
+export async function reply(
+  db: Database,
+  a: Actor,
+  kind: TargetKind,
+  targetId: string,
+  text: string,
+  parentId?: string,
+) {
+  const owner = await target(db, kind, targetId, a, true);
+  let parentOwner: string | undefined;
+  if (parentId) {
+    const parent = await db.one<{ owner_account_id: string }>(
+      `SELECT c.owner_account_id FROM musecity.comments c JOIN musecity.accounts a ON a.id=c.owner_account_id WHERE c.id=$1 AND c.${kind === "work" ? "work_id" : "post_id"}=$2 AND NOT c.deleted AND NOT c.blocked AND a.status='active' FOR SHARE OF c`,
+      [parentId, targetId],
+    );
+    requireValue(parent, 404, "NOT_FOUND", "Reply is unavailable.");
+    await requireUnblocked(db, a.account.id, parent.owner_account_id);
+    parentOwner = parent.owner_account_id;
+  }
+  await dailyBudget(db, a, "reply");
+  const commentId = id("cmt");
+  await db.query(
+    "INSERT INTO musecity.comments(id,owner_account_id,agent_id,work_id,post_id,parent_id,text) VALUES($1,$2,$3,$4,$5,$6,$7)",
+    [
+      commentId,
+      a.account.id,
+      a.agent?.id ?? null,
+      kind === "work" ? targetId : null,
+      kind === "post" ? targetId : null,
+      parentId ?? null,
+      text,
+    ],
+  );
+  await notify(
+    db,
+    a,
+    owner,
+    parentOwner === owner ? "reply" : "comment",
+    kind,
+    targetId,
+    commentId,
+    commentId,
+  );
+  if (parentOwner && parentOwner !== owner)
+    await notify(
+      db,
+      a,
+      parentOwner,
+      "reply",
+      kind,
+      targetId,
+      commentId,
+      commentId,
+    );
+  await audit(db, a, "community.reply", commentId);
+  return { id: commentId };
+}
+export async function deleteComment(db: Database, a: Actor, commentId: string) {
+  const rows = await db.query(
+    "UPDATE musecity.comments SET deleted=true,text='' WHERE id=$1 AND owner_account_id=$2 RETURNING id",
+    [commentId, a.account.id],
+  );
+  requireValue(rows.length, 404, "NOT_FOUND", "Comment not found.");
+  await audit(db, a, "comment.delete", commentId);
+  return { deleted: true };
+}
+const notificationVisible = `a.status='active' AND ${unblockedSql("a.id", "$1")}
+ AND (n.comment_id IS NULL OR EXISTS(SELECT 1 FROM musecity.comments c WHERE c.id=n.comment_id AND NOT c.deleted AND NOT c.blocked))
+ AND ((n.target_kind='account' AND EXISTS(SELECT 1 FROM musecity.follows f WHERE f.follower_id=n.actor_account_id AND f.followed_id=n.recipient_id))
+ OR (n.target_kind='work' AND EXISTS(SELECT 1 FROM musecity.works w JOIN musecity.accounts o ON o.id=w.owner_account_id WHERE w.id=n.target_id AND w.status='published' AND NOT w.blocked AND o.status='active' AND ${unblockedSql("o.id", "$1")}))
+ OR (n.target_kind='post' AND EXISTS(SELECT 1 FROM musecity.posts p JOIN musecity.accounts o ON o.id=p.owner_account_id WHERE p.id=n.target_id AND NOT p.deleted AND NOT p.blocked AND o.status='active' AND ${unblockedSql("o.id", "$1")})))`;
+export async function notifications(
+  db: Database,
+  a: Actor,
+  params: URLSearchParams,
+) {
+  const filter = JSON.stringify(["notifications", a.account.id]),
+    cursor = decodeCursor(params.get("cursor"), filter);
+  const rows = await db.query<CommunityNotification>(
+    `SELECT n.id,n.kind,${profileSql("a")} AS owner,${agentSql("g")} AS agent,n.target_kind AS "targetKind",n.target_id AS "targetId",n.comment_id AS "commentId",n.created_at AS "createdAt",n.read_at AS "readAt"
+    FROM musecity.notifications n JOIN musecity.accounts a ON a.id=n.actor_account_id LEFT JOIN musecity.agents g ON g.id=n.actor_agent_id
+    WHERE n.recipient_id=$1 AND ${notificationVisible} AND ($2::timestamptz IS NULL OR (n.created_at,n.id)<($2,$3)) ORDER BY n.created_at DESC,n.id DESC LIMIT 21`,
+    [a.account.id, cursor?.time ?? null, cursor?.id ?? null],
+  );
+  const count = await db.one<{ n: number }>(
+    `SELECT count(*)::integer AS n FROM musecity.notifications n JOIN musecity.accounts a ON a.id=n.actor_account_id WHERE n.recipient_id=$1 AND n.read_at IS NULL AND ${notificationVisible}`,
+    [a.account.id],
+  );
+  return {
+    ...page(
+      JSON.parse(JSON.stringify(rows)) as CommunityNotification[],
+      filter,
+      (r) => r.createdAt,
+    ),
+    unread: count?.n ?? 0,
+  };
+}
+export async function moderator(db: Database, a: Actor) {
+  return (
+    !a.agent &&
+    !!(await db.one("SELECT 1 FROM musecity.moderators WHERE account_id=$1", [
+      a.account.id,
+    ]))
+  );
+}
+export async function report(
+  db: Database,
+  a: Actor,
+  kind: ReportView["targetKind"],
+  targetId: string,
+  reason: string,
+) {
+  if (kind === "work" || kind === "post")
+    await target(db, kind, targetId, a, true);
+  else if (kind === "comment") {
+    const c = await db.one<{
+      work_id: string | null;
+      post_id: string | null;
+      owner_account_id: string;
+    }>(
+      "SELECT work_id,post_id,owner_account_id FROM musecity.comments WHERE id=$1 AND NOT deleted AND NOT blocked",
+      [targetId],
+    );
+    requireValue(c, 404, "NOT_FOUND", "Comment unavailable.");
+    await target(
+      db,
+      c.work_id ? "work" : "post",
+      (c.work_id ?? c.post_id)!,
+      a,
+      true,
+    );
+    await requireUnblocked(db, a.account.id, c.owner_account_id);
+  } else
+    requireValue(
+      await db.one(
+        "SELECT 1 FROM musecity.accounts WHERE id=$1 AND status='active'",
+        [targetId],
+      ),
+      404,
+      "NOT_FOUND",
+      "Account unavailable.",
+    );
+  const rows = await db.query<{ id: string }>(
+    "INSERT INTO musecity.reports(id,reporter_id,target_kind,target_id,reason) VALUES($1,$2,$3,$4,$5) ON CONFLICT(reporter_id,target_kind,target_id) DO UPDATE SET reason=EXCLUDED.reason RETURNING id",
+    [id("rpt"), a.account.id, kind, targetId, reason],
+  );
+  return { id: rows[0]!.id };
+}
+export async function reports(
+  db: Database,
+  a: Actor,
+  params: URLSearchParams,
+): Promise<Page<ReportView>> {
+  requireValue(
+    await moderator(db, a),
+    403,
+    "SCOPE_DENIED",
+    "Moderator access is required.",
+  );
+  const filter = JSON.stringify(["reports", a.account.id]),
+    cursor = decodeCursor(params.get("cursor"), filter);
+  const rows = await db.query<ReportView>(
+    `SELECT r.id,r.target_kind AS "targetKind",r.target_id AS "targetId",r.reason,r.status,r.created_at AS "createdAt",
+    CASE r.target_kind WHEN 'work' THEN (SELECT left(v.payload->>'title'||E'\\n'||COALESCE(v.payload->>'description',''),2000) FROM musecity.works w LEFT JOIN musecity.work_revisions v ON v.id=w.published_revision_id WHERE w.id=r.target_id)
+    WHEN 'post' THEN (SELECT left(p.title||E'\\n'||p.text,2000) FROM musecity.posts p WHERE p.id=r.target_id)
+    WHEN 'comment' THEN (SELECT left(c.text,2000) FROM musecity.comments c WHERE c.id=r.target_id)
+    ELSE (SELECT a.name||E'\\n'||a.bio FROM musecity.accounts a WHERE a.id=r.target_id) END AS preview,
+    CASE r.target_kind WHEN 'work' THEN '/works/'||r.target_id WHEN 'post' THEN '/posts/'||r.target_id
+    WHEN 'comment' THEN (SELECT CASE WHEN c.work_id IS NOT NULL THEN '/works/'||c.work_id ELSE '/posts/'||c.post_id END||'#conversation' FROM musecity.comments c WHERE c.id=r.target_id)
+    ELSE (SELECT '/u/'||a.handle FROM musecity.accounts a WHERE a.id=r.target_id) END AS "targetPath"
+    FROM musecity.reports r WHERE ($1::timestamptz IS NULL OR (r.created_at,r.id)<($1,$2)) ORDER BY r.created_at DESC,r.id DESC LIMIT 21`,
+    [cursor?.time ?? null, cursor?.id ?? null],
+  );
+  return page(
+    JSON.parse(JSON.stringify(rows)) as ReportView[],
+    filter,
+    (r) => r.createdAt,
+  );
+}
+export async function resolveReport(
+  db: Database,
+  a: Actor,
+  reportId: string,
+  action: "hide" | "dismiss" | "restore",
+) {
+  requireValue(
+    await moderator(db, a),
+    403,
+    "SCOPE_DENIED",
+    "Moderator access is required.",
+  );
+  const r = await db.one<{
+    target_kind: ReportView["targetKind"];
+    target_id: string;
+    status: string;
+  }>(
+    "SELECT target_kind,target_id,status FROM musecity.reports WHERE id=$1 FOR UPDATE",
+    [reportId],
+  );
+  requireValue(r, 404, "NOT_FOUND", "Report not found.");
+  requireValue(
+    action !== "restore" || r.status === "hidden",
+    409,
+    "REPORT_CONFLICT",
+    "Only a hidden report can be restored.",
+  );
+  requireValue(
+    action !== "dismiss" || r.status === "pending",
+    409,
+    "REPORT_CONFLICT",
+    "Only pending reports can be dismissed.",
+  );
+  requireValue(
+    r.target_kind !== "account" || r.target_id !== a.account.id,
+    400,
+    "VALIDATION_ERROR",
+    "Ask another moderator to review your account.",
+  );
+  if (action !== "dismiss") {
+    if (r.target_kind === "account")
+      await db.query("UPDATE musecity.accounts SET status=$2 WHERE id=$1", [
+        r.target_id,
+        action === "hide" ? "restricted" : "active",
+      ]);
+    else {
+      const table = { work: "works", post: "posts", comment: "comments" }[
+        r.target_kind
+      ];
+      await db.query(`UPDATE musecity.${table} SET blocked=$2 WHERE id=$1`, [
+        r.target_id,
+        action === "hide",
+      ]);
+    }
+  }
+  const status = { hide: "hidden", dismiss: "dismissed", restore: "restored" }[
+    action
+  ];
+  if (action === "dismiss")
+    await db.query(
+      "UPDATE musecity.reports SET status=$2,resolved_by=$3 WHERE id=$1",
+      [reportId, status, a.account.id],
+    );
+  else
+    await db.query(
+      "UPDATE musecity.reports SET status=$3,resolved_by=$4 WHERE target_kind=$1 AND target_id=$2 AND (status IN ('pending','hidden') OR id=$5)",
+      [r.target_kind, r.target_id, status, a.account.id, reportId],
+    );
+  await audit(db, a, "moderation." + action, r.target_id);
+  return { status };
+}
