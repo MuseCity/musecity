@@ -1,3 +1,4 @@
+import { Bookmark } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import {
@@ -159,6 +160,10 @@ export function Header() {
                     <Link to="/me/content">
                       <FileText size={16} />
                       My content
+                    </Link>
+                    <Link to="/me/saved">
+                      <Bookmark size={16} />
+                      My saved
                     </Link>
                     <Link to="/me/agents">
                       <Bot size={16} />

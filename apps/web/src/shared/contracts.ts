@@ -1,3 +1,4 @@
+import type { Interactions } from "./interactions";
 import { z } from "zod";
 
 export const workTypes = ["website", "video", "image", "article"] as const;
@@ -318,6 +319,7 @@ export type Profile = {
   joinedAt: string | null;
 };
 export type WorkView = {
+  interactions: Interactions;
   restricted?: boolean;
   workId: string;
   revisionId: string;
@@ -418,6 +420,7 @@ export const postSchema = z
 export type PostContent = z.infer<typeof postSchema>;
 export type Attribution = { id: string; name: string } | null;
 export type PostView = PostContent & {
+  interactions: Interactions;
   id: string;
   owner: Profile;
   agent: Attribution;
@@ -437,6 +440,7 @@ export type Page<T> = { items: T[]; nextCursor: string | null };
 export type PublicAgent = { id: string; name: string; description: string };
 export type NeighborProfile = Profile & { agents: PublicAgent[] };
 export type CommentView = {
+  interactions: Interactions;
   id: string;
   owner: Profile;
   agent: Attribution;

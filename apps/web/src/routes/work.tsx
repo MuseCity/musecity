@@ -1,3 +1,4 @@
+import { ContentActions } from "../components/content-actions";
 import {
   ContentBack,
   useContentSource,
@@ -53,7 +54,13 @@ export default function Work() {
             </div>
           )}
           <WorkDetail work={work} />
-          <div className="mt-5">
+          <div className="detail-content-actions">
+            <ContentActions
+              kind="work"
+              id={work.workId}
+              initial={work.interactions}
+              path={"/works/" + work.workId}
+            />
             <ReportButton kind="work" id={work.workId} />
           </div>
           <Conversation kind="work" id={work.workId} />

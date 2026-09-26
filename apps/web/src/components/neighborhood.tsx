@@ -1,3 +1,4 @@
+import { ContentActions } from "./content-actions";
 import { useContentSource } from "./content-navigation";
 import { TopicLinks } from "./topic-picker";
 import {
@@ -437,6 +438,16 @@ export function CommunityCard({ item }: { item: CommunityItem }) {
         </Link>
       )}
       <div className="card-actions">
+        <ContentActions
+          kind={item.kind === "work" ? "work" : "post"}
+          id={item.id}
+          initial={
+            item.kind === "work"
+              ? item.work.interactions
+              : item.post.interactions
+          }
+          path={url}
+        />
         <TopicLinks
           ids={item.kind === "work" ? item.work.body.tagIds : item.post.tagIds}
         />

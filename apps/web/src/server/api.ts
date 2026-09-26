@@ -1,3 +1,5 @@
+import { interactionSchema } from "../shared/interactions";
+import { interactionSummaries, setInteraction } from "./interactions";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { withDatabase, type Database } from "./database";
@@ -419,7 +421,7 @@ export function createApi(s: Services) {
         : c.req.header("authorization")
           ? await authed(c, undefined, false, async (d, a) => {
               await community.target(d, "work", c.req.param("id")!, a);
-              return workView(d, c.req.param("id")!);
+              return workView(d, c.req.param("id")!, undefined, a);
             })
           : await db((d) => workView(d, c.req.param("id")!)),
     ),
@@ -860,6 +862,36 @@ export function createApi(s: Services) {
       ),
     ),
   );
+  app.get("/api/v1/me/saved", async (c) =>
+    c.json(
+      await authed(c, undefined, true, (d, a) =>
+        community.savedContent(d, a, new URL(c.req.url).searchParams),
+      ),
+    ),
+  );
+  for (const kind of ["work", "post", "comment"] as const) {
+    app.put("/api/v1/" + kind + "s/:id/interactions", async (c) => {
+      const body = await json(c, interactionSchema);
+      return c.json(
+        await authed(c, undefined, true, async (d, a) => {
+          const targetId = c.req.param("id")!;
+          // Visibility is checked even on retries; replay never restores a stale choice.
+          await community.interactionTarget(d, kind, targetId, a);
+          await deduplicate(
+            d,
+            a,
+            "PUT:" + c.req.path,
+            c.req.header("Idempotency-Key") ?? null,
+            body,
+            () => setInteraction(d, a, kind, targetId, body),
+          );
+          return (
+            await interactionSummaries(d, [{ kind, id: targetId }], a)
+          ).get(kind + ":" + targetId)!;
+        }),
+      );
+    });
+  }
   app.get("/api/v1/neighbors", async (c) =>
     c.json(
       await publicRead(c, (d, a) =>

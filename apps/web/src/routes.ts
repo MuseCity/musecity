@@ -16,6 +16,7 @@ export default [
   route("publish", "routes/editor.tsx"),
   route("me/works/:id/edit", "routes/editor.tsx", { id: "edit-work" }),
   route("me/works", "routes/my-works.tsx"),
+  route("me/saved", "routes/saved.tsx"),
   route("me/content", "routes/my-content.tsx"),
   route("me/agents", "routes/agents.tsx"),
   route("agents/claim", "routes/claim.tsx"),

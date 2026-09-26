@@ -1,3 +1,4 @@
+import { ContentActions } from "../components/content-actions";
 import {
   ContentBack,
   useContentReturn,
@@ -115,6 +116,14 @@ function Content() {
               />
             ) : (
               <PostBody post={p} />
+            )}
+            {!edit && (
+              <ContentActions
+                kind="post"
+                id={p.id}
+                initial={p.interactions}
+                path={"/posts/" + p.id}
+              />
             )}
             <div className="post-management">
               {me.data?.id === p.owner.id && !edit && (

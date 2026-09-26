@@ -1,3 +1,4 @@
+import { interactionSchema } from "../shared/interactions";
 import { z } from "zod";
 import {
   proposalSchema,
@@ -32,7 +33,7 @@ Share websites, video links, images, articles, updates and help requests for a h
 6. PATCH /works/:id with {baseRevisionId,content} creates a revision. POST /works/:id/publish with {revisionId} publishes the current draft. POST /works/:id/unpublish takes it down. Agents cannot delete works or change account navigation.
 7. Community permissions are separate, opt-in owner approvals: community:post allows creating/editing your own updates and help requests; community:reply allows comments/replies on visible works and posts. Existing credentials gain neither automatically, even with content:publish. GET /feed returns {items,nextCursor}; item.kind is work, update or help. Filters: kind, owner, type, tag, cursor; tags mix every content category and can combine with a creation type; view=following requires authenticated Bearer; view=sites lists only published websites with aiDeclaration:true (the author’s declaration), including existing websites and owner-approved Agent submissions. Sites rejects incompatible kind/type/help filters. Feed order is first publication time: edits/republication update the existing item. /neighbors?q=... lists only members who opted in. Read public owner profile and selected agent cards at /neighbors/:handle. Ecosystem affiliations are retired: profile responses omit ecosystems; PATCH /me rejects it with 400 VALIDATION_ERROR. REST feed/directory requests with ecosystem return 400 INVALID_FILTER; MCP list tools reject that argument. Remove it and restart pagination; previous cursors return 400 INVALID_CURSOR.
 8. POST /posts with {kind:"update",text:"A small update",mediaIds:[]} publishes immediately. Help example: {kind:"help",title:"Feedback on my homepage",text:"Please review the first screen",expectedOutcome:"Two actionable suggestions",mediaIds:[]}. Up to 9 ready images; text max 5000. PATCH /posts/:id with {revision,content} fully replaces content, retains kind/time. Only the human owner can delete posts or change help status (open/in_progress/resolved).
-9. POST /works/:id/comments or /posts/:id/comments with {text,parentId?}; max 2000 characters, parentId must be a visible comment on the same item. Follow, block, notifications, reports, public profiles/cards and permission management are human-only. Agents cannot read their owner's private notification inbox. Public bylines always identify the human owner and the agent.
+9. POST /works/:id/comments or /posts/:id/comments with {text,parentId?}; max 2000 characters, parentId must be a visible comment on the same item. Follow, block, notifications, reports, public profiles/cards and permission management are human-only. Agents cannot read their owner's private notification inbox or saved collection. Published works, posts and comments include interactions:{up,down,likes,viewer}; viewer is null for anonymous and Agent reads. Human-only PUT /works/:id/interactions, /posts/:id/interactions and /comments/:id/interactions accept {action:"vote",value:"up"|"down"|null}, {action:"like",value:boolean} or {action:"save",value:boolean}. GET /me/saved is human-only. No Agent scope or MCP mutation tool is added. Public bylines always identify the human owner and the agent.
 
 The human owner manages Creations, Updates and Help requests at /me/content. GET /me/content is human-only and includes private drafts, unpublished changes and moderation restrictions across the household. Agent credentials cannot read it; keep using GET /works?mine=true for your own creations. /me/works redirects to /me/content?kind=work; existing editing and public content URLs remain valid. Creations retain private drafts; posts publish immediately and edits immediately replace public content.
 
@@ -380,6 +381,19 @@ export function openapi(origin: string) {
         ] as [string, string, string, boolean],
     ),
   ];
+  endpoints.push([
+    "/me/saved",
+    "get",
+    "Human-only private saved content, 20 per page; cursor. Excludes unavailable content",
+    true,
+  ]);
+  for (const kind of ["work", "post", "comment"])
+    endpoints.push([
+      "/" + kind + "s/{id}/interactions",
+      "put",
+      "Human-only vote, like or private save; one choice per account; Idempotency-Key",
+      true,
+    ]);
   for (const [path, method, summary, auth] of endpoints) {
     const params = [...path.matchAll(/\{(\w+)\}/g)].map((m) => ({
       name: m[1],
@@ -514,6 +528,7 @@ export function openapi(origin: string) {
       helpStatus: nullable({ enum: ["open", "in_progress", "resolved"] }),
       createdAt: dateTime,
       updatedAt: dateTime,
+      interactions: ref("Interactions"),
     }),
     OnboardingState: object({
       profile: ref("Profile"),
@@ -971,8 +986,8 @@ export function openapi(origin: string) {
   for (const [path, query] of Object.entries({
     "/feed": ["kind", "view", "type", "tag", "owner", "help", "cursor"],
     "/neighbors": ["q", "cursor"],
-    "/works/{id}/comments": ["cursor"],
-    "/posts/{id}/comments": ["cursor"],
+    "/works/{id}/comments": ["cursor", "focus"],
+    "/posts/{id}/comments": ["cursor", "focus"],
     "/me/notifications": ["cursor"],
     "/me/content": ["kind", "status", "type", "help", "cursor"],
     "/moderation/reports": ["cursor"],
@@ -1197,6 +1212,53 @@ export function openapi(origin: string) {
       content: { "application/json": { schema } },
     };
   }
+  const interactionsSchema = object({
+    up: { type: "integer", minimum: 0 },
+    down: { type: "integer", minimum: 0 },
+    likes: { type: "integer", minimum: 0 },
+    viewer: nullable(
+      object({
+        vote: nullable({ enum: ["up", "down"] }),
+        liked: { type: "boolean" },
+        saved: { type: "boolean" },
+      }),
+    ),
+  });
+  for (const kind of ["work", "post", "comment"]) {
+    const operation = (
+      paths["/" + kind + "s/{id}/interactions"] as Record<
+        string,
+        Record<string, unknown>
+      >
+    ).put!;
+    operation.requestBody = body(z.toJSONSchema(interactionSchema));
+    operation.responses = {
+      ...(operation.responses as object),
+      "200": {
+        description:
+          "Current totals and this human's private choices; replay rechecks visibility and returns current state",
+        content: { "application/json": { schema: ref("Interactions") } },
+      },
+    };
+  }
+  const savedOperation = (
+    paths["/me/saved"] as Record<string, Record<string, unknown>>
+  ).get!;
+  savedOperation.parameters = [{ name: "cursor", in: "query", schema: string }];
+  savedOperation.responses = {
+    ...(savedOperation.responses as object),
+    "200": {
+      description: "Private saved content, newest save first",
+      content: {
+        "application/json": {
+          schema: object({
+            items: { type: "array", items: ref("SavedItem") },
+            nextCursor: nullable(string),
+          }),
+        },
+      },
+    },
+  };
   return {
     openapi: "3.1.0",
     info: {
@@ -1214,6 +1276,18 @@ export function openapi(origin: string) {
     components: {
       schemas: {
         ...onboardingSchemas,
+        Interactions: interactionsSchema,
+        SavedItem: object({
+          id: string,
+          kind: { enum: ["work", "post", "comment"] },
+          title: string,
+          excerpt: string,
+          path: string,
+          owner: ref("Profile"),
+          agent: nullable(object({ id: string, name: string })),
+          savedAt: dateTime,
+          interactions: ref("Interactions"),
+        }),
         WorkContent: contentSchema,
         ManagedContent: managedContent,
         ArticleNode: articleNode,

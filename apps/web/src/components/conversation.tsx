@@ -1,3 +1,5 @@
+import { Link, useLocation } from "react-router";
+import { ContentActions } from "./content-actions";
 import { useEffect, useState } from "react";
 import { useAuth } from "./auth";
 import { useApi, errorMessage } from "./api";
@@ -18,10 +20,17 @@ export function Conversation({
   kind: "work" | "post";
   id: string;
 }) {
+  const location = useLocation(),
+    focus = new URLSearchParams(location.search).get("comment");
   const auth = useAuth(),
     api = useApi(),
     query = useNeighborhoodPage<CommentView>(
-      "/" + kind + "s/" + id + "/comments",
+      "/" +
+        kind +
+        "s/" +
+        id +
+        "/comments" +
+        (focus ? "?focus=" + encodeURIComponent(focus) : ""),
     ),
     me = useNeighborhoodData<Profile>("/me", undefined, true);
   const [text, setText] = useState(""),
@@ -30,6 +39,14 @@ export function Conversation({
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
     [deleting, setDeleting] = useState<string | null>(null);
+  const focusVisible =
+    !!focus && !!query.data?.items.some((c) => c.id === focus);
+  useEffect(() => {
+    if (focusVisible)
+      document
+        .getElementById("comment-" + focus)
+        ?.scrollIntoView({ block: "center" });
+  }, [focus, focusVisible]);
   useEffect(() => {
     if (!text) return;
     const leave = (e: BeforeUnloadEvent) => {
@@ -77,6 +94,15 @@ export function Conversation({
         <h2>Conversation</h2>
         <span>Say hello. Lend a hand.</span>
       </div>
+      {focus && (
+        <Link
+          className="text-link"
+          to={"/" + kind + "s/" + id + "#conversation"}
+          state={location.state}
+        >
+          View full conversation
+        </Link>
+      )}
       <QueryState busy={query.busy} error={query.error} retry={query.reload} />
       {!query.busy && !query.error && (
         <>
@@ -105,6 +131,21 @@ export function Conversation({
                   </p>
                   {!c.deleted && (
                     <div className="comment-actions">
+                      <ContentActions
+                        kind="comment"
+                        id={c.id}
+                        initial={c.interactions}
+                        path={
+                          "/" +
+                          kind +
+                          "s/" +
+                          id +
+                          "?comment=" +
+                          c.id +
+                          "#comment-" +
+                          c.id
+                        }
+                      />
                       <button
                         className="text-link"
                         onClick={() => {

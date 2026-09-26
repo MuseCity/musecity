@@ -1,3 +1,5 @@
+import { interactionSummaries } from "./interactions";
+import type { InteractionKind, SavedItem } from "../shared/interactions";
 import type { Database } from "./database";
 import { profile, profileSql, audit, dailyBudget, type Actor } from "./auth";
 import { id } from "./crypto";
@@ -174,6 +176,9 @@ export async function postView(
   await target(db, "post", postId, viewer);
   const row = await db.one<PostView>(postSelect + " WHERE p.id=$1", [postId]);
   requireValue(row, 404, "NOT_FOUND", "Post unavailable.");
+  row.interactions = (
+    await interactionSummaries(db, [{ kind: "post", id: postId }], viewer)
+  ).get("post:" + postId)!;
   return JSON.parse(JSON.stringify(row));
 }
 export async function communityFeed(
@@ -271,6 +276,11 @@ export async function communityFeed(
       cursor?.id ?? null,
     ],
   );
+  const interactions = await interactionSummaries(
+    db,
+    rows.map((r) => ({ kind: r.kind === "work" ? "work" : "post", id: r.id })),
+    viewer,
+  );
   const items = rows.map((r) => {
     const common = {
       id: r.id,
@@ -281,12 +291,21 @@ export async function communityFeed(
       ? {
           ...common,
           kind: "work" as const,
-          work: { ...(r.payload as Omit<WorkView, "owner">), owner: r.owner },
+          work: {
+            ...(r.payload as Omit<WorkView, "owner">),
+            owner: r.owner,
+            interactions: interactions.get("work:" + r.id)!,
+          },
         }
       : {
           ...common,
           kind: r.kind,
-          post: { ...(r.payload as PostView), owner: r.owner, agent: r.agent },
+          post: {
+            ...(r.payload as PostView),
+            owner: r.owner,
+            agent: r.agent,
+            interactions: interactions.get("post:" + r.id)!,
+          },
         };
   }) as CommunityItem[];
   return page(items, filter, (r) => r.createdAt);
@@ -548,8 +567,22 @@ export async function comments(
   viewer?: Actor,
 ): Promise<Page<CommentView>> {
   await target(db, kind, targetId, viewer);
+  const focusId = params.get("focus");
+  const focus = focusId
+    ? await db.one<{ time: Date; id: string }>(
+        `SELECT c.id,c.created_at AS time FROM musecity.comments c JOIN musecity.accounts a ON a.id=c.owner_account_id WHERE c.id=$1 AND c.${kind === "work" ? "work_id" : "post_id"}=$2 AND NOT c.blocked AND a.status='active' AND ${unblockedSql("a.id", "$3")}`,
+        [focusId, targetId, viewer?.account.id ?? null],
+      )
+    : null;
+  requireValue(
+    !focusId || focus,
+    404,
+    "NOT_FOUND",
+    "This reply is unavailable.",
+  );
   const filter = JSON.stringify([
       "comments",
+      focusId,
       kind,
       targetId,
       viewer?.account.id,
@@ -559,15 +592,29 @@ export async function comments(
     `SELECT c.id,${profileSql("a")} AS owner,${agentSql("g")} AS agent,CASE WHEN c.deleted THEN '' ELSE c.text END AS text,c.deleted,c.parent_id AS "parentId",c.created_at AS "createdAt"
     FROM musecity.comments c JOIN musecity.accounts a ON a.id=c.owner_account_id LEFT JOIN musecity.agents g ON g.id=c.agent_id
     WHERE c.${kind === "work" ? "work_id" : "post_id"}=$1 AND NOT c.blocked AND a.status='active' AND ${unblockedSql("a.id", "$2")}
-    AND ($3::timestamptz IS NULL OR (c.created_at,c.id)>($3,$4)) ORDER BY c.created_at,c.id LIMIT 21`,
+    AND ($3::timestamptz IS NULL OR (c.created_at,c.id)>($3,$4)) AND ($5::timestamptz IS NULL OR (c.created_at,c.id)>=($5,$6)) ORDER BY c.created_at,c.id LIMIT 21`,
     [
       targetId,
       viewer?.account.id ?? null,
       cursor?.time ?? null,
       cursor?.id ?? null,
+      focus?.time ?? null,
+      focus?.id ?? null,
     ],
   );
   const items = JSON.parse(JSON.stringify(rows)) as CommentView[];
+  const interactions = await interactionSummaries(
+    db,
+    items.filter((c) => !c.deleted).map((c) => ({ kind: "comment", id: c.id })),
+    viewer,
+  );
+  for (const c of items)
+    c.interactions = interactions.get("comment:" + c.id) ?? {
+      up: 0,
+      down: 0,
+      likes: 0,
+      viewer: null,
+    };
   return page(items, filter, (r) => r.createdAt);
 }
 export async function reply(
@@ -830,4 +877,84 @@ export async function resolveReport(
     );
   await audit(db, a, "moderation." + action, r.target_id);
   return { status };
+}
+
+export async function interactionTarget(
+  db: Database,
+  kind: InteractionKind,
+  targetId: string,
+  viewer?: Actor,
+) {
+  if (kind !== "comment") return target(db, kind, targetId, viewer, true);
+  const comment = await db.one<{
+    owner_account_id: string;
+    work_id: string | null;
+    post_id: string | null;
+  }>(
+    `SELECT c.owner_account_id,c.work_id,c.post_id FROM musecity.comments c JOIN musecity.accounts a ON a.id=c.owner_account_id
+     WHERE c.id=$1 AND NOT c.deleted AND NOT c.blocked AND a.status='active' FOR SHARE OF c`,
+    [targetId],
+  );
+  requireValue(comment, 404, "NOT_FOUND", "This reply is unavailable.");
+  if (viewer)
+    await requireUnblocked(db, viewer.account.id, comment.owner_account_id);
+  await target(
+    db,
+    comment.work_id ? "work" : "post",
+    (comment.work_id ?? comment.post_id)!,
+    viewer,
+    true,
+  );
+  return comment.owner_account_id;
+}
+
+export async function savedContent(
+  db: Database,
+  viewer: Actor,
+  params: URLSearchParams,
+): Promise<Page<SavedItem>> {
+  requireValue(
+    [...params.keys()].every((key) => key === "cursor"),
+    400,
+    "INVALID_FILTER",
+    "Only a saved-list cursor is supported.",
+  );
+  const filter = JSON.stringify(["saved", viewer.account.id]),
+    cursor = decodeCursor(params.get("cursor"), filter);
+  const rows = await db.query<SavedItem>(
+    `
+    WITH visible AS (
+      SELECT w.id,'work' AS kind,w.owner_account_id,w.created_by_agent_id AS agent_id,r.payload->>'title' AS title,
+       left(r.payload->>'description',240) AS excerpt,'/works/'||w.id AS path
+      FROM musecity.works w JOIN musecity.work_revisions r ON r.id=w.published_revision_id
+      WHERE w.status='published' AND NOT w.blocked
+      UNION ALL
+      SELECT p.id,'post',p.owner_account_id,p.agent_id,CASE WHEN p.kind='help' THEN p.title ELSE 'Update' END,left(p.text,240),'/posts/'||p.id
+      FROM musecity.posts p WHERE NOT p.deleted AND NOT p.blocked
+      UNION ALL
+      SELECT c.id,'comment',c.owner_account_id,c.agent_id,'Reply',left(c.text,240),
+       CASE WHEN c.work_id IS NOT NULL THEN '/works/'||c.work_id ELSE '/posts/'||c.post_id END||'?comment='||c.id||'#comment-'||c.id
+      FROM musecity.comments c
+      LEFT JOIN musecity.works w ON w.id=c.work_id LEFT JOIN musecity.posts p ON p.id=c.post_id
+      JOIN musecity.accounts pa ON pa.id=COALESCE(w.owner_account_id,p.owner_account_id)
+      WHERE NOT c.deleted AND NOT c.blocked AND pa.status='active' AND ${unblockedSql("pa.id", "$1")}
+       AND ((w.status='published' AND NOT w.blocked) OR (p.id IS NOT NULL AND NOT p.deleted AND NOT p.blocked))
+    )
+    SELECT e.id,e.kind,e.title,e.excerpt,e.path,${profileSql("a")} AS owner,${agentSql("g")} AS agent,i.saved_at AS "savedAt"
+    FROM musecity.content_interactions i JOIN visible e ON e.kind=i.target_kind AND e.id=i.target_id
+    JOIN musecity.accounts a ON a.id=e.owner_account_id LEFT JOIN musecity.agents g ON g.id=e.agent_id
+    WHERE i.account_id=$1 AND i.saved_at IS NOT NULL AND a.status='active' AND ${unblockedSql("a.id", "$1")}
+     AND ($2::timestamptz IS NULL OR (i.saved_at,i.target_id)<($2,$3))
+    ORDER BY i.saved_at DESC,i.target_id DESC LIMIT 21`,
+    [viewer.account.id, cursor?.time ?? null, cursor?.id ?? null],
+  );
+  const summaries = await interactionSummaries(
+    db,
+    rows.map((r) => ({ kind: r.kind, id: r.id })),
+    viewer,
+  );
+  const items = JSON.parse(JSON.stringify(rows)) as SavedItem[];
+  for (const item of items)
+    item.interactions = summaries.get(item.kind + ":" + item.id)!;
+  return page(items, filter, (r) => r.savedAt);
 }

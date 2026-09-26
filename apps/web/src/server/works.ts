@@ -1,3 +1,4 @@
+import { interactionSummaries } from "./interactions";
 import type { Database } from "./database";
 import type { WorkRow, RevisionRow } from "./schema";
 import { catalog, validateTags } from "./tags";
@@ -66,6 +67,7 @@ export async function workView(
   db: Database,
   workId: string,
   a?: Actor,
+  viewer = a,
 ): Promise<WorkView> {
   const own = a ? await ownedWork(db, a, workId) : null;
   const v = await db.one<WorkView>(
@@ -74,6 +76,9 @@ export async function workView(
     [workId],
   );
   requireValue(v, 404, "NOT_FOUND", "Creation not found.");
+  v.interactions = (
+    await interactionSummaries(db, [{ kind: "work", id: workId }], viewer)
+  ).get("work:" + workId)!;
   return JSON.parse(
     JSON.stringify(own ? { ...v, restricted: own.blocked } : v),
   );
@@ -150,7 +155,13 @@ export async function feed(
     values,
   );
   const items: WorkView[] = JSON.parse(JSON.stringify(rows.slice(0, 20)));
+  const interactions = await interactionSummaries(
+    db,
+    items.map((w) => ({ kind: "work", id: w.workId })),
+    a,
+  );
   for (const item of items) {
+    item.interactions = interactions.get("work:" + item.workId)!;
     if (!item.body.description && item.body.articleDocument)
       item.body.description = articleText(item.body.articleDocument).slice(
         0,
