@@ -1,4 +1,137 @@
 @import "tailwindcss";
+
+.governance-layout {
+  max-width: 960px;
+  margin: 0 auto;
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+.governance-panel {
+  border: 1px solid var(--color-line);
+  border-radius: 20px;
+  background: var(--color-surface);
+  padding: 28px;
+  min-width: 0;
+}
+.governance-panel h2 {
+  margin-bottom: 12px;
+}
+.governance-panel p,
+.governance-rules p {
+  margin-top: 12px;
+  margin-bottom: 12px;
+}
+.governance-rules {
+  padding: 24px;
+  border-left: 3px solid #d5a137;
+  background: #fff6e4;
+  border-radius: 0 16px 16px 0;
+}
+.governance-status {
+  display: inline-block;
+  text-transform: capitalize;
+  font-weight: 700;
+  color: #9f1d2d;
+  background: #fae9dd;
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+.governance-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.8;
+}
+.governance-excerpt {
+  overflow-wrap: anywhere;
+}
+.governance-dates,
+.wallet-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+.governance-dates {
+  margin-top: 24px;
+}
+.governance-dates dt {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+.wallet-grid {
+  align-items: start;
+}
+.wallet-address {
+  display: block;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+.wallet-balances li {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--color-line);
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  overflow-wrap: anywhere;
+}
+.wallet-balances li > * {
+  min-width: 0;
+}
+.wallet-balances li > span {
+  text-align: right;
+}
+.governance-layout
+  label:has(> input:not([type="checkbox"]):not([type="radio"])),
+.governance-layout label:has(> textarea),
+.governance-layout label:has(> select) {
+  display: grid;
+  gap: 8px;
+}
+.vote-choices {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.vote-choices label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--color-line);
+  padding: 12px 16px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.vote-choices input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  accent-color: #9f1d2d;
+}
+.vote-results {
+  display: grid;
+  gap: 16px;
+  margin: 20px 0;
+}
+.vote-results progress {
+  width: 100%;
+  height: 10px;
+  accent-color: #9f1d2d;
+}
+@media (max-width: 680px) {
+  .wallet-grid,
+  .governance-dates {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .governance-panel,
+  .governance-rules {
+    padding: 20px;
+  }
+  .primary-nav a svg {
+    display: none !important;
+  }
+}
 @font-face {
   font-family: "Manrope";
   src: url("/fonts/manrope-latin-variable.woff2") format("woff2");

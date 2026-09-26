@@ -480,7 +480,7 @@ export function ReportButton({
   kind,
   id,
 }: {
-  kind: "work" | "post" | "comment" | "account";
+  kind: "work" | "post" | "comment" | "account" | "proposal";
   id: string;
 }) {
   const auth = useAuth(),

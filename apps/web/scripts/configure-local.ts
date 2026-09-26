@@ -25,6 +25,7 @@ if (runtime) assertCloudTarget(runtime, "musecity_worker");
 const configured = {
   PRIVY_APP_ID: vars.PRIVY_APP_ID ?? "",
   PRIVY_APP_SECRET: vars.PRIVY_APP_SECRET ?? "",
+  ROBINHOOD_RPC_URL: vars.ROBINHOOD_RPC_URL ?? "",
   SUPABASE_DATABASE_URL: runtime,
   APP_ORIGIN: "http://127.0.0.1:5190",
 };

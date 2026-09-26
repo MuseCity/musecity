@@ -7,6 +7,7 @@ import {
   Suspense,
   type ReactNode,
 } from "react";
+import type { WalletSession } from "../shared/wallet";
 export type Session = {
   ready: boolean;
   userId: string | null;
@@ -14,6 +15,8 @@ export type Session = {
   logout: () => Promise<void>;
   token: () => Promise<string | null>;
   walletAddress?: string;
+  wallet?: WalletSession;
+  walletsReady?: boolean;
   retryWallet: () => Promise<void>;
   link: (kind: "email" | "google" | "twitter" | "wallet") => void;
   linked: string[];

@@ -11,6 +11,8 @@ import {
   Home,
   UsersRound,
   Compass,
+  Vote,
+  Wallet,
 } from "lucide-react";
 import { useAuth } from "./auth";
 import { useNeighborhoodData } from "./neighborhood";
@@ -91,6 +93,15 @@ export function Header() {
             <Home size={17} />
             <span>My home</span>
           </Link>
+          <Link
+            to="/governance"
+            aria-current={
+              location.pathname.startsWith("/governance") ? "page" : undefined
+            }
+          >
+            <Vote size={17} />
+            <span>Governance</span>
+          </Link>
         </nav>
         <div className="ml-auto flex items-center gap-3">
           <Link to="/share" state={state} className="primary compact">
@@ -143,6 +154,10 @@ export function Header() {
                     {me.data?.isModerator && (
                       <Link to="/moderation">Moderation</Link>
                     )}
+                    <Link to="/wallet">
+                      <Wallet size={16} />
+                      Wallet
+                    </Link>
                     <Link to="/settings">
                       <Settings size={16} />
                       Settings

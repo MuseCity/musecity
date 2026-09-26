@@ -1,6 +1,7 @@
 // Browser fixture entry only. Production root uses components/auth.tsx directly.
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useMemo, type ReactNode } from "react";
 import { AuthContext } from "../src/components/auth";
+import { fixtureWallet } from "./wallet";
 export function AuthProvider({
   children,
 }: {
@@ -9,6 +10,10 @@ export function AuthProvider({
 }) {
   const [user, setUser] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const wallet = useMemo(
+    () => (user ? fixtureWallet(user) : undefined),
+    [user],
+  );
   useEffect(() => {
     setUser(sessionStorage.getItem("musecity.fixture-user"));
     setReady(true);
@@ -26,6 +31,9 @@ export function AuthProvider({
         login: () => change("alice"),
         logout: async () => change(null),
         token: async () => (user ? "fixture:" + user : null),
+        wallet,
+        walletAddress: wallet?.address,
+        walletsReady: ready,
         retryWallet: async () => {},
         link: () => {},
         linked: ["twitter_oauth"],
@@ -36,7 +44,7 @@ export function AuthProvider({
         className="bg-amber-50 text-amber-900 text-center text-[10px] p-1"
         data-testid="fixture-banner"
       >
-        LOCAL TEST · simulated identity · real local PostgreSQL{" "}
+        LOCAL TEST · simulated identity and wallet · real local PostgreSQL{" "}
         <button
           className="underline ml-3"
           onClick={() => change(user === "bob" ? "alice" : "bob")}

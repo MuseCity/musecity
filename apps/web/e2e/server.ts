@@ -13,6 +13,8 @@ import { ApiError } from "../src/server/errors";
 import type { ObjectStore } from "../src/server/media";
 import { assertLocalTarget } from "../scripts/local-target";
 import { localImageProcessor } from "./image-processor";
+import { fixtureAddresses } from "./wallet";
+import { governanceRules } from "../src/shared/governance";
 const local = JSON.parse(readFileSync(".local/database.json", "utf8"));
 assertLocalTarget(local.e2eUrl, "musecity_e2e", "musecity_app");
 mkdirSync(".local/e2e-media", { recursive: true });
@@ -43,6 +45,17 @@ const api = createApi({
   store,
   origin: "http://127.0.0.1:5191",
   images: { process: localImageProcessor, origin: "http://127.0.0.1:5191" },
+  wallets: {
+    findWallet: async (userId) => {
+      const name = userId.replace("did:privy:", ""),
+        address = fixtureAddresses[name];
+      return address ? { id: "fixture-wallet:" + name, address } : null;
+    },
+    balance: async (address) =>
+      address === fixtureAddresses.alice
+        ? BigInt(governanceRules.threshold)
+        : 0n,
+  },
   verify: async (token) => {
     if (!/^fixture:(alice|bob)$/.test(token))
       throw new ApiError(401, "INVALID_CREDENTIAL", "Invalid test identity");

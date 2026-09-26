@@ -35,6 +35,18 @@ import { cloudflareImages, type ImageServices } from "./image-processing";
 import * as agentService from "./agents";
 import * as community from "./community";
 import * as onboarding from "./onboarding";
+import * as governance from "./governance";
+import {
+  membership,
+  privyWalletServices,
+  type WalletServices,
+} from "./wallets";
+import {
+  proposalSchema,
+  voteSchema,
+  cancelProposalSchema,
+  executionSchema,
+} from "../shared/governance";
 import {
   introductionSchema,
   onboardingActionSchema,
@@ -59,6 +71,7 @@ export type Services = {
   verify: VerifyHuman;
   origin: string;
   images?: ImageServices;
+  wallets?: WalletServices;
 };
 export const productionServices = (
   env: Env,
@@ -68,6 +81,11 @@ export const productionServices = (
   store: env.MEDIA,
   verify: privyVerifier(env.PRIVY_APP_ID, env.PRIVY_APP_SECRET),
   origin: env.APP_ORIGIN,
+  wallets: privyWalletServices(
+    env.PRIVY_APP_ID,
+    env.PRIVY_APP_SECRET,
+    env.ROBINHOOD_RPC_URL,
+  ),
   images: {
     process: cloudflareImages(env.IMAGES),
     cache: {
@@ -129,7 +147,7 @@ export function createApi(s: Services) {
         // This gives block/reply/moderation a defined commit order and prevents FK lock inversions.
         if (
           c.req.method !== "GET" &&
-          /\/(works|posts|comments|follows|blocks|reports|moderation)(\/|$)/.test(
+          /\/(works|posts|comments|follows|blocks|reports|moderation|proposals)(\/|$)/.test(
             c.req.path,
           )
         )
@@ -230,6 +248,14 @@ export function createApi(s: Services) {
   );
   app.get("/api/v1/me/onboarding", async (c) =>
     c.json(await authed(c, undefined, true, onboarding.onboardingState)),
+  );
+  app.get("/api/v1/me/membership", async (c) =>
+    c.json(
+      await authed(c, undefined, true, async (d, a) => {
+        await rateLimit(d, "membership:" + a.account.id, 30);
+        return membership(d, a, s.wallets);
+      }),
+    ),
   );
   app.patch("/api/v1/me/onboarding", async (c) => {
     const body = await json(c, onboardingActionSchema);
@@ -737,6 +763,95 @@ export function createApi(s: Services) {
     c.req.header("authorization")
       ? authed(c, undefined, false, fn)
       : db((d) => fn(d));
+  const governanceRead = <T>(
+    c: Context<AppEnv>,
+    fn: (d: Database, a?: Actor) => Promise<T>,
+  ) =>
+    c.req.header("authorization")
+      ? authed(c, undefined, true, fn)
+      : db((d) => fn(d));
+  app.get("/api/v1/proposals", async (c) =>
+    c.json(
+      await governanceRead(c, (d, a) =>
+        governance.proposals(d, new URL(c.req.url).searchParams, a),
+      ),
+    ),
+  );
+  app.get("/api/v1/proposals/:id", async (c) =>
+    c.json(
+      await governanceRead(c, (d, a) =>
+        governance.proposalView(d, c.req.param("id")!, a),
+      ),
+    ),
+  );
+  app.post("/api/v1/proposals", async (c) => {
+    const body = await json(c, proposalSchema);
+    return c.json(
+      await authed(c, "content:write", true, async (d, a) => {
+        const proposalId = await deduplicate(
+          d,
+          a,
+          "POST:/api/v1/proposals",
+          c.req.header("Idempotency-Key") ?? null,
+          body,
+          () => governance.createProposal(d, a, s.wallets, body),
+        );
+        return governance.proposalView(d, proposalId, a);
+      }),
+      201,
+    );
+  });
+  app.put("/api/v1/proposals/:id/vote", async (c) => {
+    const body = await json(c, voteSchema);
+    return c.json(
+      await authed(c, "content:write", true, async (d, a) => {
+        await deduplicate(
+          d,
+          a,
+          "PUT:" + c.req.path,
+          c.req.header("Idempotency-Key") ?? null,
+          body,
+          () =>
+            governance.vote(d, a, s.wallets, c.req.param("id")!, body.choice),
+        );
+        return governance.proposalView(d, c.req.param("id")!, a);
+      }),
+    );
+  });
+  app.post("/api/v1/proposals/:id/cancel", async (c) => {
+    const body = await json(c, cancelProposalSchema);
+    return c.json(
+      await authed(c, "content:write", true, async (d, a) => {
+        await deduplicate(
+          d,
+          a,
+          "POST:" + c.req.path,
+          c.req.header("Idempotency-Key") ?? null,
+          body,
+          () =>
+            governance.cancelProposal(d, a, c.req.param("id")!, body.reason),
+        );
+        return governance.proposalView(d, c.req.param("id")!, a);
+      }),
+    );
+  });
+  app.post("/api/v1/proposals/:id/execution", async (c) => {
+    const body = await json(c, executionSchema);
+    return c.json(
+      await authed(c, "content:write", true, async (d, a) => {
+        await deduplicate(
+          d,
+          a,
+          "POST:" + c.req.path,
+          c.req.header("Idempotency-Key") ?? null,
+          body,
+          () =>
+            governance.recordExecution(d, a, c.req.param("id")!, body.result),
+        );
+        return governance.proposalView(d, c.req.param("id")!, a);
+      }),
+    );
+  });
   app.get("/api/v1/feed", async (c) =>
     c.json(
       await publicRead(c, (d, a) =>
@@ -931,7 +1046,13 @@ export function createApi(s: Services) {
       c,
       z
         .object({
-          targetKind: z.enum(["work", "post", "comment", "account"]),
+          targetKind: z.enum([
+            "work",
+            "post",
+            "comment",
+            "account",
+            "proposal",
+          ]),
           targetId: z.string(),
           reason: z.string().trim().min(5).max(1000),
         })

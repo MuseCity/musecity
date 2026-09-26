@@ -1,5 +1,7 @@
 # Keep this file local. Never put secrets in VITE_* variables.
 PRIVY_APP_ID=
 PRIVY_APP_SECRET=
+# Optional server-only Robinhood mainnet RPC. Deploy as a Worker Secret.
+ROBINHOOD_RPC_URL=
 # Optional for dev:cloud only: dedicated runtime role, never the postgres admin.
 SUPABASE_DATABASE_URL=

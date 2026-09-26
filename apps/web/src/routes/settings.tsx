@@ -304,8 +304,11 @@ function Settings() {
       </div>
       <div className="panel mt-5">
         <h2>Your wallet</h2>
+        <Link className="text-link" to="/wallet">
+          Open wallet and membership →
+        </Link>
         <p className="text-muted text-sm mt-2">
-          Base is your default network. Robinhood Chain is also supported.
+          Robinhood Chain is your default network. You can also use Base.
         </p>
         {auth.walletAddress ? (
           <code className="block break-all text-xs mt-4">

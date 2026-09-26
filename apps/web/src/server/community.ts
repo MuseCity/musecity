@@ -673,7 +673,14 @@ export async function report(
 ) {
   if (kind === "work" || kind === "post")
     await target(db, kind, targetId, a, true);
-  else if (kind === "comment") {
+  else if (kind === "proposal") {
+    const p = await db.one<{ owner_account_id: string }>(
+      "SELECT p.owner_account_id FROM musecity.proposals p JOIN musecity.accounts a ON a.id=p.owner_account_id WHERE p.id=$1 AND NOT p.blocked AND a.status='active'",
+      [targetId],
+    );
+    requireValue(p, 404, "NOT_FOUND", "Proposal unavailable.");
+    await requireUnblocked(db, a.account.id, p.owner_account_id);
+  } else if (kind === "comment") {
     const c = await db.one<{
       work_id: string | null;
       post_id: string | null;
@@ -724,9 +731,10 @@ export async function reports(
     `SELECT r.id,r.target_kind AS "targetKind",r.target_id AS "targetId",r.reason,r.status,r.created_at AS "createdAt",
     CASE r.target_kind WHEN 'work' THEN (SELECT left(v.payload->>'title'||E'\\n'||COALESCE(v.payload->>'description',''),2000) FROM musecity.works w LEFT JOIN musecity.work_revisions v ON v.id=w.published_revision_id WHERE w.id=r.target_id)
     WHEN 'post' THEN (SELECT left(p.title||E'\\n'||p.text,2000) FROM musecity.posts p WHERE p.id=r.target_id)
+    WHEN 'proposal' THEN (SELECT left(p.title||E'\\n'||p.body,2000) FROM musecity.proposals p WHERE p.id=r.target_id)
     WHEN 'comment' THEN (SELECT left(c.text,2000) FROM musecity.comments c WHERE c.id=r.target_id)
     ELSE (SELECT a.name||E'\\n'||a.bio FROM musecity.accounts a WHERE a.id=r.target_id) END AS preview,
-    CASE r.target_kind WHEN 'work' THEN '/works/'||r.target_id WHEN 'post' THEN '/posts/'||r.target_id
+    CASE r.target_kind WHEN 'work' THEN '/works/'||r.target_id WHEN 'post' THEN '/posts/'||r.target_id WHEN 'proposal' THEN '/governance/'||r.target_id
     WHEN 'comment' THEN (SELECT CASE WHEN c.work_id IS NOT NULL THEN '/works/'||c.work_id ELSE '/posts/'||c.post_id END||'#conversation' FROM musecity.comments c WHERE c.id=r.target_id)
     ELSE (SELECT '/u/'||a.handle FROM musecity.accounts a WHERE a.id=r.target_id) END AS "targetPath"
     FROM musecity.reports r WHERE ($1::timestamptz IS NULL OR (r.created_at,r.id)<($1,$2)) ORDER BY r.created_at DESC,r.id DESC LIMIT 21`,
@@ -784,9 +792,12 @@ export async function resolveReport(
         action === "hide" ? "restricted" : "active",
       ]);
     else {
-      const table = { work: "works", post: "posts", comment: "comments" }[
-        r.target_kind
-      ];
+      const table = {
+        work: "works",
+        post: "posts",
+        comment: "comments",
+        proposal: "proposals",
+      }[r.target_kind];
       await db.query(`UPDATE musecity.${table} SET blocked=$2 WHERE id=$1`, [
         r.target_id,
         action === "hide",

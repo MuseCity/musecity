@@ -426,7 +426,7 @@ export type ReportView = {
   preview?: string;
   targetPath?: string | null;
   id: string;
-  targetKind: "work" | "post" | "comment" | "account";
+  targetKind: "work" | "post" | "comment" | "account" | "proposal";
   targetId: string;
   reason: string;
   status: "pending" | "hidden" | "dismissed" | "restored";
