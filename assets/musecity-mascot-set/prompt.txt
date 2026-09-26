@@ -1,0 +1,9 @@
+Use case: background-extraction
+Asset type: transparent PNG mascot illustration for the Musecity homepage, empty states, and small decorative placements.
+Primary request: isolate and render the same white-and-gold Musecity plush mascot shown in the supplied reference images as one clean full-body cutout on a genuinely transparent background.
+Input images: Image 1 (logo.png): primary identity and material reference; Image 2 (cover image.png): full body, pose and clothing reference; Image 3 (musegod-2.jpeg): supporting identity reference only.
+Subject: the exact friendly ivory plush character, round cream face, two glossy black eyes, tiny curved smile, subtle pink cheeks, cream fur hood, gold pointed crown with a central diamond, thin elliptical golden halo above crown, ivory cape fastened with the small gold four-point-star brooch, holding the gold orbital glowing scepter in its left image-side hand. Keep its short rounded body and small feet.
+Style/medium: polished high-quality soft 3D plush rendering matching the supplied white-and-gold logo and cover artwork.
+Composition/framing: one centered standing full-body mascot, including complete halo and complete scepter, visually balanced vertical composition in a roughly 4:5 portrait canvas, tight but safe 6% transparent margin. The other arm rests gently to its side as in the cover.
+Lighting/mood: soft warm studio illumination; golden highlights and tactile soft fur.
+Constraints: transparent alpha outside the mascot; preserve the recognizable face, crown, halo, cream cape, gold star brooch and scepter; no other characters, no city, throne, symbols, scenery, pedestal, lettering, logos, checkerboard pattern or watermark. Do not introduce red clothes, laurel-only headwear, hair, scrolls, or the black-and-gold variant. No cast shadow rectangle or white background. No text.

@@ -108,10 +108,10 @@ function Square() {
         </div>
         <img
           className="square-illustration"
-          src="/brand/vertical.png"
+          src="/brand/mascot.webp"
           alt=""
-          width="1122"
-          height="1402"
+          width="640"
+          height="800"
           fetchPriority="high"
         />
       </section>
@@ -229,11 +229,11 @@ function Square() {
         <aside className="neighborhood-sidebar">
           <div className="sidebar-welcome">
             <img
-              className="sidebar-leaves"
-              src="/brand/crest.png"
+              className="sidebar-mascot"
+              src="/brand/mascot.webp"
               alt=""
-              width="1254"
-              height="1254"
+              width="640"
+              height="800"
               loading="lazy"
             />
             <img src="/brand/icon.png" alt="" width="36" height="36" />

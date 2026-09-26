@@ -66,7 +66,7 @@ export default function LiveAuth({
         appearance: {
           theme: "light",
           accentColor: "#9F1D2D",
-          logo: "/brand/horizontal.png",
+          logo: "/brand/horizontal.webp",
         },
         embeddedWallets: {
           ethereum: { createOnLogin: "users-without-wallets" },

@@ -56,7 +56,7 @@ corepack pnpm exec wrangler deploy --config build/server/wrangler.json
 
 Wrangler retains the existing Worker Secret. Provision or rotate it explicitly with `wrangler secret put PRIVY_APP_SECRET` when authorized; never place its value in a shell argument. Local `.dev.vars` remains separate and pins port 5190. Real human login, wallet signing, authenticated production publishing and successful live Agent calls require their own acceptance and are not implied by a deployment or public smoke check.
 
-Read [SPEC](SPEC.md), [PLAN](PLAN.md), and the [Agent protocol](docs/agent-integration.md). Brand originals and provenance are in `assets/musecity-logo-set/`. The four Musecity originals and public copies remain protected. Retired predecessor artwork and release archives have been removed from this repository.
+Read [SPEC](SPEC.md), [PLAN](PLAN.md), and the [Agent protocol](docs/agent-integration.md). Active mascot sources, generation prompt and export provenance are in `assets/musecity-mascot-set/`; the four migration originals and their provenance remain protected in `assets/musecity-logo-set/`. See the [asset inventory](assets/README.md) for current web mappings. Retired predecessor artwork and release archives have been removed from this repository.
 
 Local rollback: restore only the affected files from the corresponding task backup recorded in PLAN, then restart the local server. Preserve unrelated changes, `.git`, the local database volume and remote resources.
 

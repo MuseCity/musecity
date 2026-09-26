@@ -89,7 +89,6 @@ function Home() {
           <section className="resident-home">
             <div className="home-cover">
               <span>AT HOME IN MUSECITY</span>
-              <img src="/brand/icon.png" alt="" />
             </div>
             <div className="home-profile">
               <Avatar person={p} large />

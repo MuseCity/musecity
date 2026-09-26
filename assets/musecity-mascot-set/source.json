@@ -1,0 +1,122 @@
+{
+  "source": "/Users/admin/Desktop/musecity",
+  "date": "2026-09-26",
+  "processing": "User-supplied originals copied byte-for-byte. One transparent mascot created with built-in image_gen; exact prompt retained. Web exports resize/encode only. Protected migration originals and their original source.json remain unchanged.",
+  "files": [
+    {
+      "path": "assets/musecity-mascot-set/originals/logo.png",
+      "source": "/Users/admin/Desktop/musecity/logo.png",
+      "role": "Navigation icon and favicon source",
+      "width": 1254,
+      "height": 1254,
+      "format": "png",
+      "alpha": false,
+      "bytes": 1760062,
+      "sha256": "87f8d181bacd748d26b4c763d01891ad161b933b38481cb45ecb255adefe2e2b"
+    },
+    {
+      "path": "assets/musecity-mascot-set/originals/cover.png",
+      "source": "/Users/admin/Desktop/musecity/cover image.png",
+      "role": "Login brand image source",
+      "width": 1672,
+      "height": 941,
+      "format": "png",
+      "alpha": false,
+      "bytes": 1195934,
+      "sha256": "6880b1c2977a14caba8bf74361547c7fd7c3e773492d340672e79ba2cbc8db3c"
+    },
+    {
+      "path": "assets/musecity-mascot-set/originals/musegod-1.jpeg",
+      "source": "/Users/admin/Desktop/musecity/musegod-1.jpeg",
+      "role": "Black-and-gold reference, retained unchanged; not used by the active white-and-gold UI",
+      "width": 1024,
+      "height": 1024,
+      "format": "jpeg",
+      "alpha": false,
+      "bytes": 347234,
+      "sha256": "58f9f2b5198370e37821c4e65bf8cbce768e8c186245480e5d5539bbaa7e2b0f"
+    },
+    {
+      "path": "assets/musecity-mascot-set/originals/musegod-2.jpeg",
+      "source": "/Users/admin/Desktop/musecity/musegod-2.jpeg",
+      "role": "White-and-gold mascot generation reference",
+      "width": 1024,
+      "height": 1024,
+      "format": "jpeg",
+      "alpha": false,
+      "bytes": 217277,
+      "sha256": "3842154c55e5a20f92fe3b967e62056b4529297930e60f2ccdb275e0b3c2eb02"
+    },
+    {
+      "path": "assets/musecity-mascot-set/generated/mascot.png",
+      "role": "Transparent homepage and decorative mascot",
+      "source": "OpenAI built-in image_gen",
+      "references": [
+        "assets/musecity-mascot-set/originals/logo.png",
+        "assets/musecity-mascot-set/originals/cover.png",
+        "assets/musecity-mascot-set/originals/musegod-2.jpeg"
+      ],
+      "prompt": "assets/musecity-mascot-set/prompt.txt",
+      "width": 1122,
+      "height": 1402,
+      "format": "png",
+      "alpha": true,
+      "bytes": 1654219,
+      "sha256": "b72322563d12295ea68bbe4177c73b9813b365c024e7c3959ba6057eff4a4dd1"
+    },
+    {
+      "path": "apps/web/public/brand/icon.png",
+      "source": "assets/musecity-mascot-set/originals/logo.png",
+      "width": 256,
+      "format": "png",
+      "role": "Navigation and sidebar icon; local fixture seed",
+      "processing": "Resize inside 256 x 256 without enlargement; PNG compression level 9; no crop or compositing",
+      "height": 256,
+      "alpha": false,
+      "bytes": 114882,
+      "sha256": "ce45ba889f0385ef0469b463b267ea40af1db36853e4cb6b8432692541dc07f7"
+    },
+    {
+      "path": "apps/web/public/brand/favicon.png",
+      "source": "assets/musecity-mascot-set/originals/logo.png",
+      "width": 64,
+      "format": "png",
+      "role": "Browser favicon",
+      "processing": "Resize inside 64 x 64 without enlargement; PNG compression level 9; no crop or compositing",
+      "height": 64,
+      "alpha": false,
+      "bytes": 8740,
+      "sha256": "b86c534fbf83c94db1a5f59790867fe13a9ac238b0d0d4453a94c89528ea5bde"
+    },
+    {
+      "path": "apps/web/public/brand/horizontal.webp",
+      "source": "assets/musecity-mascot-set/originals/cover.png",
+      "width": 1000,
+      "format": "webp",
+      "role": "Privy login brand image",
+      "processing": "Resize to width 1000 without enlargement; WebP quality 86; no crop or compositing",
+      "height": 563,
+      "alpha": false,
+      "bytes": 26672,
+      "sha256": "855a19bfa3c94ab51eb5d4410f34721d09ce06d2d003fbacec0694ddbff126c1"
+    },
+    {
+      "path": "apps/web/public/brand/mascot.webp",
+      "source": "assets/musecity-mascot-set/generated/mascot.png",
+      "width": 640,
+      "format": "webp",
+      "role": "Homepage illustration, empty state, sidebar and profile decoration",
+      "processing": "Resize to width 640 without enlargement; WebP quality 86, alpha quality 100; preserve transparency, no crop or compositing",
+      "height": 800,
+      "alpha": true,
+      "bytes": 98366,
+      "sha256": "463388cc940d292836ebf38f5b87e568ccbab6c595e37ab904ee92757df04060"
+    },
+    {
+      "path": "assets/musecity-mascot-set/prompt.txt",
+      "role": "Exact built-in image generation prompt",
+      "bytes": 1848,
+      "sha256": "c1f055f049ebd8deb266e5435932af855d776c9688ea574dda483bf1f0136c05"
+    }
+  ]
+}

@@ -59,10 +59,10 @@ export function Empty({
     <div className="state">
       <img
         className="empty-illustration"
-        src="/brand/crest.png"
+        src="/brand/mascot.webp"
         alt=""
-        width="1254"
-        height="1254"
+        width="640"
+        height="800"
         loading="lazy"
       />
       <h2>{title}</h2>

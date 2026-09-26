@@ -7,14 +7,20 @@ const musecity = JSON.parse(
   readFileSync(join(root, "assets/musecity-logo-set/source.json"), "utf8"),
 );
 for (const file of musecity.files) {
-  for (const path of [file.path, file.publicPath]) {
-    const bytes = readFileSync(join(root, path));
-    if (
-      createHash("sha256").update(bytes).digest("hex") !== file.sha256 ||
-      bytes[25] !== 6
-    )
-      throw new Error("Musecity original or alpha channel changed: " + path);
-  }
+  const bytes = readFileSync(join(root, file.path));
+  if (
+    createHash("sha256").update(bytes).digest("hex") !== file.sha256 ||
+    bytes[25] !== 6
+  )
+    throw new Error("Musecity original or alpha channel changed: " + file.path);
+}
+const mascot = JSON.parse(
+  readFileSync(join(root, "assets/musecity-mascot-set/source.json"), "utf8"),
+);
+for (const file of mascot.files) {
+  const bytes = readFileSync(join(root, file.path));
+  if (createHash("sha256").update(bytes).digest("hex") !== file.sha256)
+    throw new Error("Musecity mascot asset changed: " + file.path);
 }
 function walk(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
@@ -55,5 +61,7 @@ if (process.argv.includes("--deployment")) {
 console.log(
   "Guard passed: " +
     musecity.files.length +
-    " Musecity originals and their public copies intact; production/test identity boundary intact.",
+    " Musecity originals and " +
+    mascot.files.length +
+    " mascot sources/exports intact; production/test identity boundary intact.",
 );

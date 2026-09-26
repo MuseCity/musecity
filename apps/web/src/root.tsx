@@ -45,7 +45,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
           type="font/woff2"
           crossOrigin="anonymous"
         />
-        <link rel="icon" href="/brand/icon.png" />
+        <link
+          rel="icon"
+          href="/brand/favicon.png"
+          type="image/png"
+          sizes="64x64"
+        />
         <Meta />
         <Links />
       </head>

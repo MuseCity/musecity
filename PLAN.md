@@ -290,3 +290,43 @@ corepack pnpm exec wrangler rollback abf66242-b3fa-4305-8a1e-9993625a6f1a --conf
 This restores the preceding Worker and static assets, including its ecosystem UI/API behavior. Retain the database schema and historical values. Earlier file-recovery scripts intentionally refuse later documentation edits; do not override their hash safeguards or use a blanket Git reset for local recovery.
 
 Sanitized evidence: `/tmp/musecity-ecosystem-production-deploy.log`, `/tmp/musecity-ecosystem-production-api-upload.log`, `/tmp/musecity-ecosystem-production-smoke.json`; ignored deployment bundle and version metadata: `apps/web/.local/ecosystem-release/`. Temporary asset-session metadata was removed after upload. This release evidence is separate from authenticated write/MCP tests against the isolated local database.
+
+## White-and-gold mascot asset replacement (2026-09-26)
+
+The user authorized replacing corresponding project artwork using `/Users/admin/Desktop/musecity` and allowed image generation. Initial acceptance was **local only**, with no staging, commit, push or production release. The user subsequently authorized deployment and a local commit; see the release record below.
+
+- Copied the four supplied reference images byte-for-byte into `assets/musecity-mascot-set/originals/`. Navigation and favicon exports use `logo.png`; Privy login branding uses `cover image.png`. The white-and-gold identity is used throughout; the black-and-gold scene remains a preserved reference rather than a second active visual identity.
+- Created one transparent full-body mascot with the built-in `image_gen` tool, using the logo, cover and white-and-gold scene as references. The output is saved at `assets/musecity-mascot-set/generated/mascot.png`; the exact prompt is `assets/musecity-mascot-set/prompt.txt`. The web export serves the homepage, empty states, sidebar and profile decoration.
+- Active exports are `apps/web/public/brand/{icon.png,favicon.png,horizontal.webp,mascot.webp}`. Removed the superseded public horizontal/crest/vertical PNG copies and updated every application reference. Corrected intrinsic dimensions, renamed the obsolete sidebar decoration class, removed the profile icon that overlapped the new mascot and brought the mobile profile artwork fully into its cover. Existing layout, interface colors and business behavior remain otherwise unchanged.
+- Preserved all four protected migration originals and `assets/musecity-logo-set/source.json` unchanged. The guard checks those original hashes and the separate new manifest's reference files, generated image, exact prompt and current exports; production/test identity and deployment checks remain in place. Current asset mappings are documented in `assets/README.md`.
+
+Verification: Node 24.11.1 / pnpm 10.33.2; asset/production guard, formatting of all touched source files, Worker and React Router type generation, TypeScript, production build and `git diff --check` pass. The final build includes the profile layout correction; existing dependency annotation and bundle-size warnings remain. No new business logic or database changes warranted a full database test run.
+
+All four exported assets return HTTP 200 from the local server with expected MIME types, dimensions and SHA-256 values. The 640 × 800 WebP preserves real transparency, including 222,186 fully transparent pixels and partial-alpha edges. Web brand assets total **248,660 bytes**, down from **6,575,348 bytes (96.2% smaller)**. Desktop input hashes and protected migration-original hashes match their baselines.
+
+Browser acceptance used the existing isolated fixture at port 5191 and the regular local Worker at port 5190 with local PostgreSQL. Checked homepage, empty directory, sidebar, favicon and profile at 1440 × 1000 and 390 × 844; mobile document width was 375px, within the 390px viewport. Opened the actual Privy modal on the local Worker and verified the replacement horizontal image on desktop and phone; the mobile modal occupied exactly 390px without horizontal overflow. No login submission, profile save, publication, upload, invitation, wallet action or external data change was performed. Historical fixture avatars and post images remain user content and were not rewritten.
+
+Evidence: ignored screenshots, `asset-checks.json`, `typecheck.log` and `build.log` under `apps/web/.local/asset-refresh/`. Initial development dependency optimization produced stale-module responses before fresh navigation; the loaded local SDK and modal were subsequently verified. This establishes local asset/layout acceptance, not production release or completed login verification.
+
+## Mascot asset production release and commit (2026-09-26)
+
+The user explicitly requested deployment and committing this change. Released at **2026-09-26 02:54:30 UTC / 10:54:30 Asia/Shanghai**, serving 100% of `https://musecity.xyz` traffic.
+
+- Worker version: `2d3e74c3-3196-41c6-8a6a-92c99eb261e8`; deployment: `fd77f4a1-e263-40fe-b955-6a0e8c5ef318`.
+- Verified pre-release rollback version: `f52ee0a7-9120-4d99-b634-8f1b9bcf2e7b` (deployment `a28a9632-0d3a-411e-b29a-e26188a1fe42`). No migration or database mutation was required.
+- Reused the final locally accepted build. Deployment guard and Wrangler dry run passed; ordinary Wrangler deployment uploaded 184 changed assets, reused 119 existing assets, and successfully published the Worker. No alternate uploader, dependency/configuration change or retry workaround was required.
+- Cloudflare read-back confirms 100% traffic and unchanged Hyperdrive, R2, Images, application variables, Privy secret binding, compatibility settings and observability. workers.dev and preview URLs remain disabled.
+- **18 production HTTP checks passed**: all four brand asset hashes match the accepted build; homepage markup references the new mascot/favicon and omits retired PNGs; the served stylesheet matches the build; public pages, profile and API reads succeed; anonymous account and MCP access remains denied.
+- Browser acceptance verified live homepage/sidebar, an empty directory, the existing public profile and actual Privy login branding on desktop and at 390 × 844. Page width stayed within the viewport (375px content on the 390px phone; 390px for the login modal). The profile mascot is fully visible without the former overlapping icon. No browser page errors were reported; the existing Coinbase Smart Wallet unsupported-chain informational message remains. No login was submitted and no profile, content, wallet or Agent data was changed. Existing user-uploaded avatars and images are preserved.
+
+Release evidence is saved in the ignored `apps/web/.local/asset-refresh/` directory: `pre-deploy.json`, `production-version.json`, `production-deploy.log`, `production-smoke.json` and production screenshots. Source assets, application references, asset guard, specification and release documentation are included in the local commit; credentials, dependencies, runtime state, build output and acceptance screenshots are excluded. No remote push is part of this authorization.
+
+### Current production rollback
+
+From `apps/web`:
+
+```sh
+corepack pnpm exec wrangler rollback f52ee0a7-9120-4d99-b634-8f1b9bcf2e7b --config build/server/wrangler.json
+```
+
+This restores the preceding Worker and its static artwork. Keep existing databases, storage, user content and Privy configuration unchanged.
