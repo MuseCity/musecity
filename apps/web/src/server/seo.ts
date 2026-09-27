@@ -14,7 +14,7 @@ const entriesSql = `WITH public_works AS (
  JOIN musecity.accounts a ON a.id=p.owner_account_id
  WHERE NOT p.deleted AND NOT p.blocked AND a.status='active'
 ), entries AS (
- SELECT path,NULL::timestamptz AS lastmod FROM (VALUES ('/'),('/?view=sites'),('/neighbors'),('/governance'),('/agents/mcp')) AS pages(path)
+ SELECT path,NULL::timestamptz AS lastmod FROM (VALUES ('/'),('/?view=sites'),('/neighbors'),('/governance'),('/agents'),('/agents/mcp')) AS pages(path)
  UNION ALL SELECT '/works/'||id,published_at FROM public_works
  UNION ALL SELECT '/posts/'||id,updated_at FROM public_posts
  UNION ALL SELECT '/u/'||handle,NULL::timestamptz FROM musecity.accounts WHERE status='active'

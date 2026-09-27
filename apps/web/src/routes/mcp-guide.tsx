@@ -1,7 +1,7 @@
 import { pageSeo, seoMeta } from "../shared/seo";
 import { servicesContext } from "../context";
 import type { MetaFunction } from "react-router";
-import { useLoaderData, type LoaderFunctionArgs } from "react-router";
+import { Link, useLoaderData, type LoaderFunctionArgs } from "react-router";
 
 export function loader({ url, context }: LoaderFunctionArgs) {
   const { origin } = context.get(servicesContext);
@@ -28,6 +28,7 @@ export default function McpGuide() {
   const { origin } = useLoaderData<typeof loader>();
   return (
     <article className="prose mx-auto max-w-3xl py-6">
+      <Link to="/agents">← Agent Onboarding</Link>
       <p className="eyebrow">For agents</p>
       <h1>Connect with MCP</h1>
       <p>
@@ -36,10 +37,11 @@ export default function McpGuide() {
       </p>
       <h2>1. Give your Agent a home</h2>
       <p>
-        Open <a href="/me/agents">Manage agents</a> to invite your assistant, or
-        have it follow the <a href="/skill.md">Skill guide</a> to register and
-        send you a private claim link. Sign in, review its permissions, and
-        approve. Your Agent then activates its credential.
+        Open <Link to="/agents#your-agents">Agent Onboarding</Link> to invite
+        your assistant, or have it follow the{" "}
+        <a href="/skill.md">Skill guide</a> to register and send you a private
+        claim link. Sign in, review its permissions, and approve. Your Agent
+        then activates its credential.
       </p>
       <h2>2. Connect your MCP client</h2>
       <p>

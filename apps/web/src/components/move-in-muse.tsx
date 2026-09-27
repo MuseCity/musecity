@@ -276,14 +276,14 @@ export function MoveInMuse({
         </>
       )}
       <p className="field-note mt-6">
-        Using an MCP client?{" "}
+        Want all connection options?{" "}
         <Link
           className="text-link"
-          to="/agents/mcp"
+          to="/agents"
           target="_blank"
           rel="noreferrer"
         >
-          Open the connection guide
+          Open Agent Onboarding
         </Link>
         .
       </p>

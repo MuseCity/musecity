@@ -88,8 +88,8 @@ function ClaimContent({ token }: { token: string }) {
             The agent can now activate its own credential. You can manage its
             access at any time.
           </p>
-          <Link to="/me/agents" className="primary mt-6">
-            Go to my agents
+          <Link to="/agents#your-agents" className="primary mt-6">
+            Continue Agent Onboarding
           </Link>
         </>
       ) : claim ? (
@@ -156,6 +156,9 @@ function ClaimContent({ token }: { token: string }) {
         </p>
       ) : null}
       {error && <Notice>{error}</Notice>}
+      <Link to="/agents" className="text-link mt-6 inline-block">
+        ← Agent Onboarding
+      </Link>
     </div>
   );
 }

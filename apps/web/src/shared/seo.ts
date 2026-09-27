@@ -68,6 +68,7 @@ export function publicIndexable(url: URL) {
     return !["kind", "type", "tag", "view", "q"].some((k) => p.has(k));
   return (
     url.pathname === "/governance" ||
+    url.pathname === "/agents" ||
     url.pathname === "/agents/mcp" ||
     /^\/(works|posts|governance)\/[^/]+$/.test(url.pathname)
   );

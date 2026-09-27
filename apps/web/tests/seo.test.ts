@@ -18,6 +18,7 @@ import { RouterContextProvider } from "react-router";
 import { servicesContext } from "../src/context";
 import { publicRead } from "../src/route-data";
 import { loader as guideLoader } from "../src/routes/mcp-guide";
+import { loader as onboardingLoader } from "../src/routes/agent-onboarding";
 
 const comments: Page<CommentView> = { items: [], nextCursor: null };
 const origin = "https://musecity.xyz";
@@ -34,17 +35,20 @@ describe("public search discovery", () => {
   it("uses React Router's normalized document URL for client loader metadata", () => {
     const context = new RouterContextProvider();
     context.set(servicesContext, { appId: "", origin, api: fixture().app });
-    const result = guideLoader({
-      request: new Request(
-        origin + "/agents/mcp.data?_routes=routes/mcp-guide",
-      ),
-      url: new URL(origin + "/agents/mcp"),
-      pattern: "/agents/mcp",
-      params: {},
-      context,
-    });
-    expect(result.seo.canonical).toBe(origin + "/agents/mcp");
-    expect(result.seo.noindex).toBe(false);
+    for (const [path, loader] of [
+      ["/agents/mcp", guideLoader],
+      ["/agents", onboardingLoader],
+    ] as const) {
+      const result = loader({
+        request: new Request(origin + path + ".data?_routes=route"),
+        url: new URL(origin + path),
+        pattern: path,
+        params: {},
+        context,
+      });
+      expect(result.seo.canonical).toBe(origin + path);
+      expect(result.seo.noindex).toBe(false);
+    }
   });
   it("preserves upstream failure status instead of rendering an indexable empty page", async () => {
     for (const status of [400, 404, 500, 503]) {
@@ -81,6 +85,7 @@ describe("public search discovery", () => {
       "/governance",
       "/governance/prp_1",
       "/agents/mcp",
+      "/agents",
     ])
       expect(publicIndexable(new URL(path, origin))).toBe(true);
     for (const path of [
@@ -95,6 +100,8 @@ describe("public search discovery", () => {
       "/settings",
       "/me/content",
       "/me/saved",
+      "/me/agents",
+      "/agents/claim",
       "/notifications",
       "/moderation",
     ])
@@ -158,6 +165,10 @@ describe("public search discovery", () => {
     const sitemap = async () =>
       (await f.app.request("http://localhost/sitemap.xml")).text();
     expect(await sitemap()).not.toContain("/works/" + work.workId);
+    const publicPages = locations(await sitemap());
+    expect(publicPages).toContain("http://localhost/agents");
+    expect(publicPages).not.toContain("http://localhost/me/agents");
+    expect(publicPages).not.toContain("http://localhost/agents/claim");
     await f.call("/works/" + work.workId + "/publish", {
       method: "POST",
       body: { revisionId: work.revisionId },

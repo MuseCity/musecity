@@ -84,6 +84,15 @@ export function Header() {
             <span>Neighbors</span>
           </Link>
           <Link
+            to="/governance"
+            aria-current={
+              location.pathname.startsWith("/governance") ? "page" : undefined
+            }
+          >
+            <Vote size={17} />
+            <span>Governance</span>
+          </Link>
+          <Link
             to="/me/home"
             aria-current={
               location.pathname === "/me/home" ||
@@ -95,17 +104,21 @@ export function Header() {
             <Home size={17} />
             <span>My home</span>
           </Link>
-          <Link
-            to="/governance"
-            aria-current={
-              location.pathname.startsWith("/governance") ? "page" : undefined
-            }
-          >
-            <Vote size={17} />
-            <span>Governance</span>
-          </Link>
         </nav>
         <div className="ml-auto flex items-center gap-3">
+          <Link
+            to="/agents"
+            className="header-agent-link"
+            aria-current={
+              location.pathname === "/agents" ||
+              location.pathname.startsWith("/agents/") ||
+              location.pathname === "/me/agents"
+                ? "page"
+                : undefined
+            }
+          >
+            Agent Onboarding
+          </Link>
           <Link
             to={shareHref(
               location.pathname === "/" &&

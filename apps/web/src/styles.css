@@ -774,6 +774,16 @@
   .primary-nav a:not([aria-current="page"]):hover {
     background: var(--color-canvas);
   }
+  .header-agent-link {
+    color: var(--color-brand);
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+  .header-agent-link:hover {
+    color: var(--color-brand-dark);
+  }
   .account-label {
     max-width: 100px;
     overflow: hidden;
@@ -1646,6 +1656,20 @@
     border-bottom: 0;
   }
 }
+@media (max-width: 1320px) {
+  .header-main {
+    height: auto;
+    flex-wrap: wrap;
+    padding-top: 12px;
+    padding-bottom: 8px;
+    gap: 10px;
+  }
+  .primary-nav {
+    order: 3;
+    width: 100%;
+    justify-content: space-between;
+  }
+}
 @media (max-width: 900px) {
   .neighborhood-layout {
     grid-template-columns: minmax(0, 1fr) 265px;
@@ -1683,16 +1707,19 @@
   .primary-nav {
     order: 3;
     width: 100%;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     justify-content: space-between;
     border-top: 1px solid #f1e8dc;
     padding: 7px 0;
     margin-top: 5px;
   }
   .primary-nav a {
-    flex: 1;
     justify-content: center;
-    padding: 9px 6px;
+    padding: 9px 2px;
     font-size: 12px;
+    white-space: normal;
+    text-align: center;
   }
   .primary-nav a svg {
     display: block;
@@ -1700,6 +1727,11 @@
   }
   .header-main > .ml-auto {
     gap: 8px;
+  }
+  .header-agent-link {
+    max-width: 90px;
+    font-size: 12px;
+    line-height: 1.5;
   }
   .account-button {
     padding: 7px 8px;
@@ -2145,6 +2177,143 @@ fieldset:disabled {
 }
 @media (max-width: 380px) {
   .header-main:has(.account-button) .brand > span {
+    display: none;
+  }
+}
+
+/* Agent setup shares the existing public guide and private management styles. */
+.agent-onboarding {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: grid;
+  gap: 36px;
+}
+.agent-onboarding-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 32px;
+  border: 1px solid var(--color-line);
+  border-radius: 24px;
+  background: linear-gradient(120deg, #fff, #fbf1d9);
+}
+.agent-onboarding-mark {
+  width: 100px;
+  height: 100px;
+  flex-shrink: 0;
+  color: var(--color-brand);
+  stroke-width: 1.2;
+}
+.agent-section-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-brand);
+}
+.agent-section-nav a:hover {
+  text-decoration: underline;
+}
+.agent-onboarding-grid,
+.agent-permissions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.agent-permissions {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.agent-permissions .panel {
+  padding: 20px;
+}
+.agent-permissions p:not(.eyebrow) {
+  font-size: 13px;
+  color: var(--color-muted);
+  margin: 12px 0;
+}
+.agent-permissions code {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.agent-onboarding .panel,
+.agent-onboarding section {
+  min-width: 0;
+}
+.agent-onboarding [id] {
+  scroll-margin-top: 40px;
+}
+.agent-steps {
+  list-style: decimal;
+  padding-left: 20px;
+  margin: 20px 0;
+  font-size: 14px;
+}
+.agent-steps li + li {
+  margin-top: 12px;
+}
+.agent-steps code,
+.agent-details code,
+.agent-onboarding-grid p code {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.agent-copy {
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--color-canvas);
+}
+.agent-copy pre {
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin-top: 10px;
+}
+.agent-copy [role="status"]:empty {
+  display: none;
+}
+.agent-details {
+  border-top: 1px solid var(--color-line);
+  padding-top: 16px;
+}
+.agent-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--color-brand);
+}
+.agent-signin {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+}
+.agent-success-note {
+  padding: 20px;
+  border-left: 3px solid var(--color-gold);
+  margin-top: 20px;
+  font-size: 14px;
+  background: var(--color-mint);
+}
+@media (max-width: 900px) {
+  .agent-permissions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 680px) {
+  .agent-onboarding {
+    gap: 28px;
+  }
+  .agent-onboarding-grid,
+  .agent-permissions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .agent-onboarding-hero {
+    padding: 24px;
+  }
+  .agent-onboarding-mark {
     display: none;
   }
 }
