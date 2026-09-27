@@ -1,3 +1,5 @@
+import { pageSeo, seoMeta } from "./shared/seo";
+import { PaginationIdentityReset } from "./components/pagination-identity";
 import { servicesContext } from "./context";
 import {
   Links,
@@ -8,19 +10,31 @@ import {
   isRouteErrorResponse,
   useLoaderData,
   type LoaderFunctionArgs,
+  type MetaFunction,
 } from "react-router";
 import { AuthProvider } from "./components/auth";
 import { NeighborhoodProvider } from "./components/neighborhood";
 import { Header } from "./components/header";
 import { ContentNavigationProvider } from "./components/content-navigation";
 import "./styles.css";
-export const meta = () => [
-  { title: "musecity — Build together." },
-  {
-    name: "description",
-    content: "An online city built by people and their Muse AI.",
-  },
-];
+export const meta: MetaFunction<typeof loader> = ({
+  loaderData,
+  location,
+  error,
+}) =>
+  seoMeta(
+    loaderData
+      ? pageSeo(
+          loaderData.origin,
+          new URL(location.pathname + location.search, loaderData.origin),
+          {
+            title: "musecity — Build together.",
+            noindex: true,
+          },
+        )
+      : undefined,
+    error,
+  );
 export async function loader({ context }: LoaderFunctionArgs) {
   const services = context.get(servicesContext);
   const response = await services.api.fetch(
@@ -29,7 +43,7 @@ export async function loader({ context }: LoaderFunctionArgs) {
   const tags = response.ok
     ? ((await response.json()) as { tags: { id: string; name: string }[] }).tags
     : [];
-  return { appId: services.appId ?? "", tags };
+  return { appId: services.appId ?? "", origin: services.origin, tags };
 }
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -66,6 +80,7 @@ export default function App() {
   const { appId } = useLoaderData<typeof loader>();
   return (
     <AuthProvider appId={appId}>
+      <PaginationIdentityReset />
       <NeighborhoodProvider>
         <ContentNavigationProvider>
           <a className="skip-link" href="#main-content">

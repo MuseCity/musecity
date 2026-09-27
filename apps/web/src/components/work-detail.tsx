@@ -52,7 +52,7 @@ export function WorkBody({
           className="primary mt-6"
           href={body.websiteUrl ?? body.videoUrl}
           target="_blank"
-          rel="noopener noreferrer nofollow"
+          rel="noopener noreferrer nofollow ugc"
         >
           {body.type === "website" ? "Visit website" : "Watch video"}
           <ArrowUpRight size={16} />

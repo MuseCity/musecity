@@ -1,3 +1,4 @@
+import { sitemap } from "./seo";
 import { interactionSchema } from "../shared/interactions";
 import { interactionSummaries, setInteraction } from "./interactions";
 import { Hono, type Context } from "hono";
@@ -224,6 +225,21 @@ export function createApi(s: Services) {
       },
       (known ? error.status : 503) as 400,
     );
+  });
+  app.get("/robots.txt", (c) =>
+    c.text(
+      "User-agent: *\nAllow: /\nSitemap: " +
+        new URL("/sitemap.xml", s.origin).href +
+        "\n",
+    ),
+  );
+  app.get("/sitemap.xml", async (c) => {
+    c.header("Content-Type", "application/xml; charset=utf-8");
+    return c.body(await db((d) => sitemap(d, s.origin)));
+  });
+  app.get("/sitemaps/:part", async (c) => {
+    c.header("Content-Type", "application/xml; charset=utf-8");
+    return c.body(await db((d) => sitemap(d, s.origin, c.req.param("part"))));
   });
   app.get("/skill.md", (c) => c.text(skill(s.origin)));
   app.get("/openapi.json", (c) => c.json(openapi(s.origin)));

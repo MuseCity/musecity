@@ -25,7 +25,7 @@ export function Article({
           content = (
             <a
               href={mark.attrs.href}
-              rel="noopener noreferrer nofollow"
+              rel="noopener noreferrer nofollow ugc"
               target="_blank"
             >
               {content}

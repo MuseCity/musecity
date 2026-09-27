@@ -1,3 +1,6 @@
+import { workSeo, seoMeta } from "../shared/seo";
+import { publicRead, publicComments } from "../route-data";
+import type { MetaFunction } from "react-router";
 import { ContentActions } from "../components/content-actions";
 import {
   ContentBack,
@@ -13,17 +16,22 @@ import { servicesContext } from "../context";
 import { Link, useLoaderData, type LoaderFunctionArgs } from "react-router";
 import type { WorkView, Profile } from "../shared/contracts";
 import { WorkDetail } from "../components/work-detail";
-export async function loader({ request, params, context }: LoaderFunctionArgs) {
-  const response = await context
-    .get(servicesContext)
-    .api.fetch(new Request(new URL("/api/v1/works/" + params.id, request.url)));
-  if (!response.ok)
-    throw new Response("Creation unavailable", { status: response.status });
-  return response.json() as Promise<WorkView>;
+export async function loader(args: LoaderFunctionArgs) {
+  const content = await publicRead<WorkView>(args, "/works/" + args.params.id);
+  const comments = await publicComments(args, "works", args.params.id!);
+  return {
+    ...content,
+    comments,
+    seo: workSeo(
+      args.context.get(servicesContext).origin,
+      args.url,
+      content,
+      comments,
+    ),
+  };
 }
-export const meta = ({ data }: { data?: WorkView }) => [
-  { title: data ? data.body.title + " — musecity" : "Creation — musecity" },
-];
+export const meta: MetaFunction<typeof loader> = ({ loaderData, error }) =>
+  seoMeta(loaderData?.seo, error);
 export default function Work() {
   const initial = useLoaderData<typeof loader>();
   const query = useNeighborhoodData<WorkView>(
@@ -63,7 +71,11 @@ export default function Work() {
             />
             <ReportButton kind="work" id={work.workId} />
           </div>
-          <Conversation kind="work" id={work.workId} />
+          <Conversation
+            kind="work"
+            id={work.workId}
+            initial={initial.comments}
+          />
         </>
       )}
     </div>

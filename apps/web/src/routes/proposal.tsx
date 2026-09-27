@@ -1,3 +1,6 @@
+import { pageSeo, personSchema, seoMeta } from "../shared/seo";
+import { publicRead } from "../route-data";
+import type { MetaFunction } from "react-router";
 import { useEffect, useState } from "react";
 import {
   Link,
@@ -22,19 +25,31 @@ import {
   type Proposal,
   type VoteChoice,
 } from "../shared/governance";
-export async function loader({ request, params, context }: LoaderFunctionArgs) {
-  const response = await context
-    .get(servicesContext)
-    .api.fetch(
-      new Request(new URL("/api/v1/proposals/" + params.id, request.url)),
-    );
-  if (!response.ok)
-    throw new Response("Proposal unavailable", { status: response.status });
-  return response.json() as Promise<Proposal>;
+export async function loader(args: LoaderFunctionArgs) {
+  const proposal = await publicRead<Proposal>(
+    args,
+    "/proposals/" + args.params.id,
+  );
+  const origin = args.context.get(servicesContext).origin;
+  return {
+    ...proposal,
+    seo: pageSeo(origin, args.url, {
+      title: proposal.title + " — musecity",
+      description: proposal.body,
+      structured: {
+        "@context": "https://schema.org",
+        "@type": "CreativeWork",
+        name: proposal.title,
+        text: proposal.body,
+        datePublished: proposal.createdAt,
+        author: personSchema(origin, proposal.owner),
+        url: new URL("/governance/" + proposal.id, origin).href,
+      },
+    }),
+  };
 }
-export const meta = ({ data }: { data?: Proposal }) => [
-  { title: (data?.title ?? "Proposal") + " — musecity" },
-];
+export const meta: MetaFunction<typeof loader> = ({ loaderData, error }) =>
+  seoMeta(loaderData?.seo, error);
 const labels: Record<VoteChoice, string> = {
   for: "For",
   against: "Against",

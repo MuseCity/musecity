@@ -1,3 +1,6 @@
+import { postSeo, seoMeta } from "../shared/seo";
+import { publicRead, publicComments } from "../route-data";
+import type { MetaFunction } from "react-router";
 import { ContentActions } from "../components/content-actions";
 import {
   ContentBack,
@@ -24,16 +27,22 @@ import { Conversation } from "../components/conversation";
 import { PostEditor } from "../components/post-editor";
 import { Notice, Dialog } from "../components/ui";
 import { helpStatuses, type PostView, type Profile } from "../shared/contracts";
-export async function loader({ params, request, context }: LoaderFunctionArgs) {
-  const r = await context
-    .get(servicesContext)
-    .api.fetch(new Request(new URL("/api/v1/posts/" + params.id, request.url)));
-  if (!r.ok) throw new Response("Post unavailable", { status: r.status });
-  return r.json() as Promise<PostView>;
+export async function loader(args: LoaderFunctionArgs) {
+  const content = await publicRead<PostView>(args, "/posts/" + args.params.id);
+  const comments = await publicComments(args, "posts", args.params.id!);
+  return {
+    ...content,
+    comments,
+    seo: postSeo(
+      args.context.get(servicesContext).origin,
+      args.url,
+      content,
+      comments,
+    ),
+  };
 }
-export const meta = ({ data }: { data?: PostView }) => [
-  { title: (data?.title || "Around musecity") + " — musecity" },
-];
+export const meta: MetaFunction<typeof loader> = ({ loaderData, error }) =>
+  seoMeta(loaderData?.seo, error);
 export default function Post() {
   const location = useLocation();
   return <Content key={location.key} />;
@@ -173,7 +182,7 @@ function Content() {
             )}
           </article>
           {(!edit || me.data?.id !== p.owner.id) && (
-            <Conversation kind="post" id={p.id} />
+            <Conversation kind="post" id={p.id} initial={initial.comments} />
           )}
         </>
       )}

@@ -12,16 +12,20 @@ import {
   LoadMore,
 } from "./neighborhood";
 import { Empty, Notice, Dialog } from "./ui";
-import type { CommentView, Profile } from "../shared/contracts";
+import type { CommentView, Profile, Page } from "../shared/contracts";
 export function Conversation({
   kind,
   id,
+  initial,
 }: {
   kind: "work" | "post";
   id: string;
+  initial?: Page<CommentView>;
 }) {
   const location = useLocation(),
-    focus = new URLSearchParams(location.search).get("comment");
+    params = new URLSearchParams(location.search),
+    cursor = params.get("commentCursor"),
+    focus = cursor ? null : params.get("comment");
   const auth = useAuth(),
     api = useApi(),
     query = useNeighborhoodPage<CommentView>(
@@ -30,7 +34,12 @@ export function Conversation({
         "s/" +
         id +
         "/comments" +
-        (focus ? "?focus=" + encodeURIComponent(focus) : ""),
+        (cursor
+          ? "?cursor=" + encodeURIComponent(cursor)
+          : focus
+            ? "?focus=" + encodeURIComponent(focus)
+            : ""),
+      initial,
     ),
     me = useNeighborhoodData<Profile>("/me", undefined, true);
   const [text, setText] = useState(""),
@@ -179,6 +188,8 @@ export function Conversation({
             <Empty title="Be the first to say hello." />
           )}
           <LoadMore
+            publicPath={location.pathname + location.search}
+            cursorParam="commentCursor"
             next={query.data?.nextCursor}
             busy={query.moreBusy}
             error={query.moreError}

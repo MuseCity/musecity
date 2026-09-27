@@ -1,3 +1,6 @@
+import { pageSeo, personSchema, seoMeta } from "../shared/seo";
+import { publicRead } from "../route-data";
+import type { MetaFunction } from "react-router";
 import {
   ContentKinds,
   CreationFormats,
@@ -34,30 +37,41 @@ import {
   LoadMore,
 } from "../components/neighborhood";
 import { Empty } from "../components/ui";
-export async function loader({ params, request, context }: LoaderFunctionArgs) {
-  const cleaned = retiredEcosystemPath(new URL(request.url));
+export async function loader(args: LoaderFunctionArgs) {
+  const { params, url, context } = args;
+  const cleaned = retiredEcosystemPath(url);
   if (cleaned) throw replace(cleaned);
-  const api = context.get(servicesContext).api;
-  const [p, f] = await Promise.all([
-    api.fetch(
-      new Request(new URL("/api/v1/neighbors/" + params.handle, request.url)),
-    ),
-    api.fetch(
-      new Request(
-        new URL(
-          "/api/v1/feed?" +
-            publicContentParams(new URL(request.url).search, params.handle),
-          request.url,
-        ),
-      ),
+  const { origin } = context.get(servicesContext);
+  const [profile, page] = await Promise.all([
+    publicRead<NeighborProfile>(args, "/neighbors/" + params.handle),
+    publicRead<Page<CommunityItem>>(
+      args,
+      "/feed?" + publicContentParams(url.search, params.handle),
     ),
   ]);
-  if (!p.ok) throw new Response("Neighbor unavailable", { status: p.status });
-  return {
-    profile: (await p.json()) as NeighborProfile,
-    page: f.ok ? ((await f.json()) as Page<CommunityItem>) : undefined,
-  };
+  const seo = pageSeo(origin, url, {
+    title: `${profile.name} (@${profile.handle}) — musecity`,
+    description:
+      profile.bio ||
+      profile.workingOn ||
+      `Public creations, updates and conversations from ${profile.name} on musecity.`,
+    image: profile.avatarMediaId
+      ? "/media/" + profile.avatarMediaId + "?w=256"
+      : undefined,
+    structured: {
+      "@context": "https://schema.org",
+      "@type": "ProfilePage",
+      mainEntity: {
+        ...personSchema(origin, profile),
+        identifier: profile.handle,
+        description: profile.bio,
+      },
+    },
+  });
+  return { profile, page, seo };
 }
+export const meta: MetaFunction<typeof loader> = ({ loaderData, error }) =>
+  seoMeta(loaderData?.seo, error);
 export default function ProfilePage() {
   const location = useLocation();
   return <Home key={location.key} />;
@@ -198,6 +212,7 @@ function Home() {
               </Empty>
             ))}
           <LoadMore
+            publicPath={location.pathname + location.search}
             next={feed.data?.nextCursor}
             busy={feed.moreBusy}
             error={feed.moreError}

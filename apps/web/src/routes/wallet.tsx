@@ -17,7 +17,10 @@ import {
   type TransactionStatus,
 } from "../shared/wallet";
 
-export const meta = () => [{ title: "Your wallet — musecity" }];
+export const meta = () => [
+  { title: "Your wallet — musecity" },
+  { name: "robots", content: "noindex, follow" },
+];
 type Transaction = {
   hash: Hex;
   chainId: WalletChainId;

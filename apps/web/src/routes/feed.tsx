@@ -1,3 +1,6 @@
+import { collectionSeo, seoMeta } from "../shared/seo";
+import { publicRead } from "../route-data";
+import type { MetaFunction } from "react-router";
 import {
   ContentKinds,
   useContentSource,
@@ -33,40 +36,57 @@ import {
 import { Empty } from "../components/ui";
 import type { CommunityItem, Page, Profile } from "../shared/contracts";
 import type { OnboardingState } from "../shared/onboarding";
-export async function loader({ request, context }: LoaderFunctionArgs) {
-  const cleaned = retiredEcosystemPath(new URL(request.url));
+export async function loader(args: LoaderFunctionArgs) {
+  const { url, context } = args;
+  const cleaned = retiredEcosystemPath(url);
   if (cleaned) throw replace(cleaned);
-  const url = new URL(request.url),
-    api = context.get(servicesContext).api;
-  const paths = [
-    "/feed?" + publicContentParams(url.search),
-    "/neighbors",
-    "/feed?kind=help&help=open",
-  ];
-  const data = await Promise.all(
-    paths.map(async (path, i) => {
-      if (i === 0 && url.searchParams.get("view") === "following") return null;
-      const response = await api.fetch(
-        new Request(new URL("/api/v1" + path, url)),
-      );
-      return response.ok ? response.json() : null;
-    }),
-  );
+  const { origin } = context.get(servicesContext);
+  const [page, neighbors, requests] = await Promise.all([
+    url.searchParams.get("view") === "following"
+      ? null
+      : publicRead<Page<CommunityItem>>(
+          args,
+          "/feed?" + publicContentParams(url.search),
+        ),
+    publicRead<Page<Profile>>(args, "/neighbors").catch(() => null),
+    publicRead<Page<CommunityItem>>(args, "/feed?kind=help&help=open").catch(
+      () => null,
+    ),
+  ]);
+  const tagId = url.searchParams.get("tag");
+  const tags = tagId
+    ? await publicRead<{ tags: { id: string; name: string }[] }>(args, "/tags")
+    : null;
+  const tag = tags?.tags.find((t) => t.id === tagId);
+  const sites = url.searchParams.get("view") === "sites";
+  const title = sites
+    ? "AI-built websites — musecity"
+    : tag
+      ? tag.name + " — musecity"
+      : "musecity — A city we build together.";
+  const description = sites
+    ? "Discover AI-assisted websites shared by creators and their agents on musecity."
+    : tag
+      ? `Explore creations, updates and help requests about ${tag.name} from the musecity community.`
+      : "Discover websites and creative work, share updates, and build together with people and their Muse AI.";
   return {
-    page: data[0] as Page<CommunityItem> | null,
-    neighbors: data[1] as Page<Profile> | null,
-    requests: data[2] as Page<CommunityItem> | null,
+    page,
+    neighbors,
+    requests,
+    seo: collectionSeo(
+      origin,
+      url,
+      title,
+      description,
+      (page?.items ?? []).map(
+        (item) => (item.kind === "work" ? "/works/" : "/posts/") + item.id,
+      ),
+      !!tag && !page?.items.length,
+    ),
   };
 }
-const description = "An online city built by people and their Muse AI.";
-
-export const meta = () => [
-  { title: "musecity — A city we build together." },
-  {
-    name: "description",
-    content: description,
-  },
-];
+export const meta: MetaFunction<typeof loader> = ({ loaderData, error }) =>
+  seoMeta(loaderData?.seo, error);
 export default function Feed() {
   const location = useLocation();
   return <Square key={location.key} />;
@@ -222,6 +242,7 @@ function Square() {
                   </Empty>
                 ))}
               <LoadMore
+                publicPath={location.pathname + location.search}
                 next={query.data?.nextCursor}
                 busy={query.moreBusy}
                 error={query.moreError}

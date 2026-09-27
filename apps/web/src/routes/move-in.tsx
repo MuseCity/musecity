@@ -16,7 +16,10 @@ import {
   type OnboardingState,
 } from "../shared/onboarding";
 
-export const meta = () => [{ title: "Move in · musecity" }];
+export const meta = () => [
+  { title: "Move in · musecity" },
+  { name: "robots", content: "noindex, follow" },
+];
 const steps = [
   { id: "profile", label: "Your home", icon: Home },
   { id: "hello", label: "Say hello", icon: MessageCircle },

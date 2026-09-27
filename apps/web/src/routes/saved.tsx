@@ -10,7 +10,10 @@ import {
 } from "../components/neighborhood";
 import { Empty } from "../components/ui";
 import type { SavedItem } from "../shared/interactions";
-export const meta = () => [{ title: "My saved — musecity" }];
+export const meta = () => [
+  { title: "My saved — musecity" },
+  { name: "robots", content: "noindex, follow" },
+];
 export default function Saved() {
   return (
     <RequireAuth>

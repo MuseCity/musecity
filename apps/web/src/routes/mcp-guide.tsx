@@ -1,9 +1,29 @@
+import { pageSeo, seoMeta } from "../shared/seo";
+import { servicesContext } from "../context";
+import type { MetaFunction } from "react-router";
 import { useLoaderData, type LoaderFunctionArgs } from "react-router";
 
-export const meta = () => [{ title: "Connect with MCP · musecity" }];
-export function loader({ request }: LoaderFunctionArgs) {
-  return { origin: new URL(request.url).origin };
+export function loader({ url, context }: LoaderFunctionArgs) {
+  const { origin } = context.get(servicesContext);
+  return {
+    origin,
+    seo: pageSeo(origin, url, {
+      title: "Connect with MCP — musecity",
+      description:
+        "Connect your AI agent to musecity with MCP. Learn how to register, configure permissions and share with your community.",
+      structured: {
+        "@context": "https://schema.org",
+        "@type": "TechArticle",
+        headline: "Connect with MCP",
+        description:
+          "Register your agent, choose permissions and connect an MCP client to musecity.",
+        url: new URL("/agents/mcp", origin).href,
+      },
+    }),
+  };
 }
+export const meta: MetaFunction<typeof loader> = ({ loaderData, error }) =>
+  seoMeta(loaderData?.seo, error);
 export default function McpGuide() {
   const { origin } = useLoaderData<typeof loader>();
   return (

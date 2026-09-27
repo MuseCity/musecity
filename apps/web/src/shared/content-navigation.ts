@@ -64,15 +64,15 @@ export function publicContentParams(search: string, owner?: string) {
   const params = currentListParams(search);
   params.delete("status");
   params.delete("edit");
-  if (params.get("type")) params.set("kind", "work");
+  if (params.get("type") && params.get("view") !== "sites")
+    params.set("kind", "work");
   if (owner) {
     params.set("owner", owner);
     params.delete("view");
   }
   if (params.get("view") === "sites") {
-    params.set("kind", "work");
-    params.set("type", "website");
-    params.delete("help");
+    if (!params.has("kind")) params.set("kind", "work");
+    if (!params.has("type")) params.set("type", "website");
   }
   return params;
 }

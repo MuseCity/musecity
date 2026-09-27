@@ -1,3 +1,6 @@
+import { collectionSeo, seoMeta } from "../shared/seo";
+import { publicRead } from "../route-data";
+import type { MetaFunction } from "react-router";
 import { useState } from "react";
 import {
   Link,
@@ -19,13 +22,25 @@ import { Empty, Notice, Dialog } from "../components/ui";
 import type { Page } from "../shared/contracts";
 import { governanceDate, type Proposal } from "../shared/governance";
 
-export async function loader({ request, context }: LoaderFunctionArgs) {
-  const response = await context
-    .get(servicesContext)
-    .api.fetch(new Request(new URL("/api/v1/proposals", request.url)));
-  return response.ok ? (response.json() as Promise<Page<Proposal>>) : null;
+export async function loader(args: LoaderFunctionArgs) {
+  const url = args.url;
+  const page = await publicRead<Page<Proposal>>(
+    args,
+    "/proposals" + url.search,
+  );
+  return {
+    ...page,
+    seo: collectionSeo(
+      args.context.get(servicesContext).origin,
+      url,
+      "Governance — musecity",
+      "Read community proposals, voting results and public execution records on musecity.",
+      page.items.map((p) => "/governance/" + p.id),
+    ),
+  };
 }
-export const meta = () => [{ title: "Governance — musecity" }];
+export const meta: MetaFunction<typeof loader> = ({ loaderData, error }) =>
+  seoMeta(loaderData?.seo, error);
 export default function Governance() {
   const auth = useAuth(),
     location = useLocation();
@@ -33,7 +48,11 @@ export default function Governance() {
 }
 function Proposals() {
   const initial = useLoaderData<typeof loader>(),
-    query = useNeighborhoodPage<Proposal>("/proposals", initial ?? undefined),
+    location = useLocation(),
+    query = useNeighborhoodPage<Proposal>(
+      "/proposals" + location.search,
+      initial,
+    ),
     member = useMembership();
   const api = useApi(),
     navigate = useNavigate();
@@ -138,6 +157,7 @@ function Proposals() {
           </Empty>
         ))}
       <LoadMore
+        publicPath={location.pathname + location.search}
         next={query.data?.nextCursor}
         busy={query.moreBusy}
         error={query.moreError}

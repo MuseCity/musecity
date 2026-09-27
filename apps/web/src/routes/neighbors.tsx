@@ -1,3 +1,6 @@
+import { collectionSeo, seoMeta } from "../shared/seo";
+import { publicRead } from "../route-data";
+import type { MetaFunction } from "react-router";
 import {
   Form,
   Link,
@@ -16,16 +19,24 @@ import {
 } from "../components/neighborhood";
 import { Empty } from "../components/ui";
 import type { Page, Profile } from "../shared/contracts";
-export async function loader({ request, context }: LoaderFunctionArgs) {
-  const url = new URL(request.url);
-  const cleaned = retiredEcosystemPath(url);
+export async function loader(args: LoaderFunctionArgs) {
+  const url = args.url,
+    cleaned = retiredEcosystemPath(url);
   if (cleaned) throw replace(cleaned);
-  const r = await context
-    .get(servicesContext)
-    .api.fetch(new Request(new URL("/api/v1/neighbors" + url.search, url)));
-  return r.ok ? (r.json() as Promise<Page<Profile>>) : null;
+  const page = await publicRead<Page<Profile>>(args, "/neighbors" + url.search);
+  return {
+    ...page,
+    seo: collectionSeo(
+      args.context.get(servicesContext).origin,
+      url,
+      "Meet your neighbors — musecity",
+      "Find creators and their agents by name, interests, skills and current projects.",
+      page.items.map((p) => "/u/" + p.handle),
+    ),
+  };
 }
-export const meta = () => [{ title: "Meet your neighbors — musecity" }];
+export const meta: MetaFunction<typeof loader> = ({ loaderData, error }) =>
+  seoMeta(loaderData?.seo, error);
 export default function Neighbors() {
   const location = useLocation();
   return <Directory key={location.key} />;
@@ -114,6 +125,7 @@ function Directory() {
           </Empty>
         ))}
       <LoadMore
+        publicPath={location.pathname + location.search}
         next={query.data?.nextCursor}
         busy={query.moreBusy}
         error={query.moreError}

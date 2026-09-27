@@ -1,3 +1,4 @@
+import { paginationHref, withCursor, withoutCursor } from "../shared/seo";
 import { ContentActions } from "./content-actions";
 import { useContentSource } from "./content-navigation";
 import { TopicLinks } from "./topic-picker";
@@ -164,10 +165,7 @@ export function useNeighborhoodData<T>(
         ) {
           seen.add(result.nextCursor);
           const next = (await read(
-            path +
-              (path.includes("?") ? "&" : "?") +
-              "cursor=" +
-              encodeURIComponent(result.nextCursor),
+            withCursor(path, result.nextCursor),
           )) as Page<{ id: string }>;
           result = {
             ...result,
@@ -249,7 +247,9 @@ export function useNeighborhoodPage<T extends { id: string }>(
   initial?: Page<T>,
   privateOnly = false,
 ) {
-  const query = useNeighborhoodData<Page<T>>(path, initial, privateOnly);
+  const auth = useAuth();
+  const readPath = auth.userId && !privateOnly ? withoutCursor(path) : path;
+  const query = useNeighborhoodData<Page<T>>(readPath, initial, privateOnly);
   const [moreBusy, setMoreBusy] = useState(false),
     [moreError, setMoreError] = useState("");
   async function more() {
@@ -258,10 +258,7 @@ export function useNeighborhoodPage<T extends { id: string }>(
     setMoreError("");
     try {
       const result = await query.read(
-        path +
-          (path.includes("?") ? "&" : "?") +
-          "cursor=" +
-          encodeURIComponent(query.data.nextCursor),
+        withCursor(readPath, query.data.nextCursor),
       );
       query.setData({
         items: [
@@ -466,20 +463,52 @@ export function LoadMore({
   busy,
   error,
   onClick,
+  publicPath,
+  cursorParam = "cursor",
 }: {
   next: string | null | undefined;
   busy: boolean;
   error: string;
   onClick: () => void;
+  publicPath?: string;
+  cursorParam?: "cursor" | "commentCursor";
 }) {
+  const auth = useAuth();
+  const href =
+    publicPath && !auth.userId
+      ? paginationHref(publicPath, next, cursorParam)
+      : undefined;
+  const label = busy ? "Loading…" : error ? "Retry loading" : "Load more";
   return (
     <>
       {error && <Notice>{error}</Notice>}
       {next && (
         <div className="load-more">
-          <button className="secondary" disabled={busy} onClick={onClick}>
-            {busy ? "Loading…" : error ? "Retry loading" : "Load more"}
-          </button>
+          {href ? (
+            <a
+              className="secondary"
+              href={href}
+              aria-disabled={busy || undefined}
+              onClick={(event) => {
+                if (
+                  event.button !== 0 ||
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey
+                )
+                  return;
+                event.preventDefault();
+                if (!busy) onClick();
+              }}
+            >
+              {label}
+            </a>
+          ) : (
+            <button className="secondary" disabled={busy} onClick={onClick}>
+              {label}
+            </button>
+          )}
         </div>
       )}
     </>

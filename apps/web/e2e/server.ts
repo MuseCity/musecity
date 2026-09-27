@@ -79,12 +79,23 @@ const listener = getRequestListener(async (request) => {
   if (
     path.startsWith("/api/") ||
     path.startsWith("/media/") ||
-    ["/skill.md", "/openapi.json", "/mcp"].includes(path)
+    path.startsWith("/sitemaps/") ||
+    [
+      "/skill.md",
+      "/openapi.json",
+      "/mcp",
+      "/robots.txt",
+      "/sitemap.xml",
+    ].includes(path)
   )
     return api.fetch(request);
   const { servicesContext } = await vite.ssrLoadModule("/src/context.ts");
   const context = new RouterContextProvider();
-  context.set(servicesContext, { appId: "", api });
+  context.set(servicesContext, {
+    appId: "",
+    origin: "http://127.0.0.1:5191",
+    api,
+  });
   return handler(request, context);
 });
 createHttpServer((req, res) => {

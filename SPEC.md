@@ -1,6 +1,6 @@
 # musecity product specification
 
-Version 0.7 · Content interactions 2026-09-26. Implementation baseline for unified publishing, public display, and private management, with email, Google, X, and wallet login. See [PLAN.md](PLAN.md) for completion evidence and remaining integration checks.
+Version 0.8 · Public content SEO 2026-09-27. Implementation baseline for unified publishing, public display, and private management, with email, Google, X, and wallet login. See [PLAN.md](PLAN.md) for completion evidence and remaining integration checks.
 
 ## 1. Product and scope
 
@@ -80,6 +80,15 @@ The user subsequently authorized connecting the existing Musecity Supabase and P
 - Keep the Square dense: begin with the primary tabs, followed by closely spaced filters and compact content cards. Omit the introductory welcome banner and sidebar welcome card. An unfinished move-in reminder may appear below the primary tabs. Votes, likes, Save, Share, tags and replies share one wrapping footer; image previews are bounded thumbnails and open the full detail. Keep author/Agent attribution, timestamps, help status, readable text and narrow-screen navigation visible.
 - The new `/feed` sorts by first public timestamp and id descending, with 20 items per page. Editing, republishing, and changing help status update the existing item without moving it to the top. The legacy `/works` API retains its published_at ordering and response format. New cursors are bound to filters and the accessing identity and cannot be reused across conditions.
 - Loading, empty lists, API failures, and retries have explicit states. Public lists read only public revisions and exclude drafts, unpublished or deleted content, blocked content, and content from restricted accounts.
+
+### Public discovery and search indexing
+
+- Initial server HTML includes public page content, title, description, canonical URL, Open Graph/Twitter cards and matching JSON-LD. This covers Square, Sites, nonempty enabled topics, creations, updates/help requests, profiles, neighbors, public governance and the MCP guide. Creation metadata reads the published revision; editing a private draft cannot expose its title, description or images.
+- Keep existing URLs. Canonicals use `APP_ORIGIN` (`https://musecity.xyz` in production), discard tracking/editor/comment-focus state, and retain valid `cursor` or `commentCursor` pagination. React Router's `.data` transport addresses never become canonical pages. Production-origin HTTP requests redirect with 308, preserving path and query.
+- Public lists and conversations retain incremental loading and expose real next-page links for anonymous visitors. Each linked page renders its own content and canonical. Comments appear in initial HTML. Cursor replacement avoids duplicate cursor parameters; login and identity changes reset pagination and keep identity-bound API cursors and blocking rules intact.
+- `/robots.txt` allows crawling and declares `/sitemap.xml`. The dynamic sitemap uses anonymous public visibility, enabled topics with public content, active profiles and visible proposals. Creations use `published_at` and posts use their public `updated_at` for `lastmod`; omit uncertain timestamps. Withdrawn, deleted, hidden and restricted-account content disappears without a migration or manual rebuild. At more than 1,000 URLs return a sitemap index and bounded `/sitemaps/:part.xml` chunks.
+- Following, searches, combined/secondary filters, empty topics and private management, editor, wallet and settings pages are `noindex, follow`. Do not disallow these paths in robots.txt. Invalid public filters/cursors retain 400, absent content retains 404, and upstream failures retain their failure status. Old format URLs retain their existing normalization; incompatible Sites filters are rejected.
+- Structured data represents visible collections, creations/articles, conversations, people and guidance. User-submitted external links carry `ugc` and retain `nofollow`. Website shares canonicalize to their Musecity details; do not fetch external full text or invent reviews/ratings. Search Console submission and actual index coverage are post-release checks, not a guarantee of indexing or indexing the linked external site.
 
 ## 4. Four creation formats and articles
 
