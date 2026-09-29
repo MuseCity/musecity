@@ -54,6 +54,10 @@ import {
   introductionSchema,
   onboardingActionSchema,
 } from "../shared/onboarding";
+import {
+  agentNotifications,
+  markAgentNotificationsRead,
+} from "./agent-notifications";
 import { myContent } from "./content";
 import {
   workSchema,
@@ -65,7 +69,6 @@ import {
   type Scope,
   residentSchema,
   postSchema,
-  helpStatuses,
 } from "../shared/contracts";
 import type { AccountRow, AgentRow } from "./schema";
 import { openapi, skill } from "./discovery";
@@ -871,6 +874,27 @@ export function createApi(s: Services) {
       }),
     );
   });
+  app.get("/api/v1/discovery", async (c) =>
+    c.json(await publicRead(c, (d, a) => community.communityDiscovery(d, a))),
+  );
+  app.get("/api/v1/agent/notifications", async (c) =>
+    c.json(
+      await authed(c, "community:notifications", false, (d, a) =>
+        agentNotifications(d, a, new URL(c.req.url).searchParams),
+      ),
+    ),
+  );
+  app.post("/api/v1/agent/notifications/read", async (c) => {
+    const body = await json(
+      c,
+      z.object({ ids: z.array(z.string()).min(1).max(100) }).strict(),
+    );
+    return c.json(
+      await write(c, "community:notifications", false, body, (d, a) =>
+        markAgentNotificationsRead(d, a, body.ids),
+      ),
+    );
+  });
   app.get("/api/v1/feed", async (c) =>
     c.json(
       await publicRead(c, (d, a) =>
@@ -965,28 +989,6 @@ export function createApi(s: Services) {
     return c.json(
       await write(c, "community:post", true, body, (d, a) =>
         community.changePost(d, a, c.req.param("id")!, body.revision),
-      ),
-    );
-  });
-  app.patch("/api/v1/posts/:id/status", async (c) => {
-    const body = await json(
-      c,
-      z
-        .object({
-          revision: z.number().int().positive(),
-          status: z.enum(helpStatuses),
-        })
-        .strict(),
-    );
-    return c.json(
-      await write(c, "community:post", true, body, (d, a) =>
-        community.changePost(
-          d,
-          a,
-          c.req.param("id")!,
-          body.revision,
-          body.status,
-        ),
       ),
     );
   });

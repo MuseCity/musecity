@@ -1,4 +1,5 @@
 import type { MetaDescriptor } from "react-router";
+import { galleryBuilder, guideBuilder } from "./site-builders";
 import {
   articleText,
   type CommentView,
@@ -34,16 +35,28 @@ export function canonicalPath(url: URL) {
   const params = new URLSearchParams();
   const keys =
     url.pathname === "/"
-      ? ["view", "tag", "kind", "type", "owner", "help", "cursor"]
+      ? [
+          "view",
+          "tag",
+          "kind",
+          "type",
+          "owner",
+          "agent",
+          "q",
+          "builder",
+          "cursor",
+        ]
       : /^\/u\//.test(url.pathname)
-        ? ["kind", "type", "tag", "cursor"]
+        ? ["kind", "type", "tag", "agent", "q", "cursor"]
         : url.pathname === "/neighbors"
-          ? ["q", "cursor"]
-          : url.pathname === "/governance"
-            ? ["cursor"]
-            : /^\/(works|posts)\//.test(url.pathname)
-              ? ["commentCursor"]
-              : [];
+          ? ["view", "q", "cursor"]
+          : galleryBuilder(url.pathname)
+            ? ["q", "cursor"]
+            : url.pathname === "/governance"
+              ? ["cursor"]
+              : /^\/(works|posts)\//.test(url.pathname)
+                ? ["commentCursor"]
+                : [];
   for (const key of keys) {
     const value = url.searchParams.get(key);
     if (
@@ -57,16 +70,25 @@ export function canonicalPath(url: URL) {
 }
 export function publicIndexable(url: URL) {
   const p = url.searchParams;
-  if (p.has("edit") || p.get("view") === "following") return false;
+  if (
+    p.has("q") ||
+    p.has("agent") ||
+    p.has("edit") ||
+    p.get("view") === "following"
+  )
+    return false;
   if (url.pathname === "/")
     return (
-      !["kind", "type", "owner", "help", "q", "status"].some((k) => p.has(k)) &&
-      !(p.get("view") === "sites" && p.has("tag"))
+      !["kind", "type", "owner", "help", "q", "status", "builder"].some((k) =>
+        p.has(k),
+      ) && !(p.get("view") === "sites" && p.has("tag"))
     );
   if (url.pathname === "/neighbors") return !p.has("q");
   if (/^\/u\//.test(url.pathname))
     return !["kind", "type", "tag", "view", "q"].some((k) => p.has(k));
   return (
+    !!galleryBuilder(url.pathname) ||
+    !!guideBuilder(url.pathname) ||
     url.pathname === "/governance" ||
     url.pathname === "/agents" ||
     url.pathname === "/agents/mcp" ||
@@ -199,7 +221,7 @@ export function postSeo(
   comments: Page<CommentView>,
 ) {
   const seo = pageSeo(origin, url, {
-    title: (post.title || excerpt(post.text, 65)) + " — musecity",
+    title: excerpt(post.text, 65) + " — musecity",
     description: post.text,
     article: true,
     image: post.mediaIds[0]
@@ -209,7 +231,7 @@ export function postSeo(
   seo.structured = {
     "@context": "https://schema.org",
     "@type": "DiscussionForumPosting",
-    headline: post.title || excerpt(post.text, 65),
+    headline: excerpt(post.text, 65),
     text: post.text,
     url: seo.canonical,
     author: personSchema(origin, post.owner),

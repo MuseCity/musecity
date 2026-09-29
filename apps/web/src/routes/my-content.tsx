@@ -10,16 +10,11 @@ import {
   useChangeContentFilter,
 } from "../components/content-navigation";
 import { contentKind } from "../shared/content-navigation";
-import {
-  helpStatuses,
-  typeLabels,
-  type ManagedContent,
-} from "../shared/contracts";
+import { typeLabels, type ManagedContent } from "../shared/contracts";
 import {
   useNeighborhoodPage,
   QueryState,
   LoadMore,
-  helpLabel,
 } from "../components/neighborhood";
 import { Empty, Notice, Dialog } from "../components/ui";
 import { dateLabel } from "../components/work-list";
@@ -53,8 +48,7 @@ function Content() {
   } | null>(null);
   async function act(
     item: ManagedContent,
-    action: "delete" | "unpublish" | "publish" | "progress",
-    value?: string,
+    action: "delete" | "unpublish" | "publish",
   ) {
     setBusy(item.id);
     setError("");
@@ -66,14 +60,7 @@ function Content() {
           action === "delete" ? "DELETE" : "POST",
         );
       } else {
-        await api(
-          "/posts/" + item.id + (action === "progress" ? "/status" : ""),
-          {
-            revision: item.revision,
-            ...(action === "progress" ? { status: value } : {}),
-          },
-          action === "progress" ? "PATCH" : "DELETE",
-        );
+        await api("/posts/" + item.id, { revision: item.revision }, "DELETE");
       }
       setConfirm(null);
       if (action === "publish") void navigate("/works/" + item.id, { state });
@@ -84,12 +71,7 @@ function Content() {
       setBusy(null);
     }
   }
-  const newPath =
-    kind === "work"
-      ? "/publish"
-      : kind === "help"
-        ? "/share?kind=help"
-        : "/share";
+  const newPath = kind === "work" ? "/publish" : "/share";
   return (
     <>
       <div className="page-top">
@@ -105,26 +87,17 @@ function Content() {
       </div>
       <ContentKinds />
       {kind === "work" && <CreationFormats />}
-      {(kind === "work" || kind === "help") && (
+      {kind === "work" && (
         <label className="content-status-filter field">
-          {kind === "work" ? "Publication status" : "Help progress"}
+          Publication status
           <select
-            value={params.get(kind === "work" ? "status" : "help") ?? ""}
-            onChange={(e) =>
-              changeFilter(kind === "work" ? "status" : "help", e.target.value)
-            }
+            value={params.get("status") ?? ""}
+            onChange={(e) => changeFilter("status", e.target.value)}
           >
-            <option value="">
-              {kind === "work" ? "All statuses" : "All progress"}
-            </option>
-            {(kind === "work"
-              ? (["draft", "published", "unpublished"] as const)
-              : helpStatuses
-            ).map((value) => (
+            <option value="">All statuses</option>
+            {(["draft", "published", "unpublished"] as const).map((value) => (
               <option key={value} value={value}>
-                {value in helpLabel
-                  ? helpLabel[value as keyof typeof helpLabel]
-                  : value[0]!.toUpperCase() + value.slice(1)}
+                {value[0]!.toUpperCase() + value.slice(1)}
               </option>
             ))}
           </select>
@@ -160,11 +133,7 @@ function Content() {
                   <div className="managed-content-copy">
                     <div className="flex flex-wrap items-center gap-2 mb-2">
                       <span className={"content-badge " + item.kind}>
-                        {item.kind === "work"
-                          ? "Creation"
-                          : item.kind === "help"
-                            ? "Help request"
-                            : "Update"}
+                        {item.kind === "work" ? "Creation" : "Update"}
                       </span>
                       <span className="status-chip">
                         {item.status[0]!.toUpperCase() + item.status.slice(1)}
@@ -207,9 +176,6 @@ function Content() {
                       <span>Updated {dateLabel(item.updatedAt)}</span>
                       {item.kind === "work" && (
                         <span>{typeLabels[item.format]}</span>
-                      )}
-                      {item.kind === "help" && item.helpStatus && (
-                        <span>{helpLabel[item.helpStatus]}</span>
                       )}
                     </div>
                     {item.restricted && (
@@ -261,24 +227,6 @@ function Content() {
                             )}
                           </>
                         )}
-                        {item.kind === "help" && (
-                          <label className="status-select">
-                            Progress
-                            <select
-                              disabled={!!busy}
-                              value={item.helpStatus!}
-                              onChange={(e) =>
-                                void act(item, "progress", e.target.value)
-                              }
-                            >
-                              {helpStatuses.map((value) => (
-                                <option key={value} value={value}>
-                                  {helpLabel[value]}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        )}
                       </>
                     )}
                     <button
@@ -297,9 +245,9 @@ function Content() {
         ) : (
           <Empty title="No content here yet.">
             <p>
-              {params.get("status") || params.get("help") || params.get("type")
+              {params.get("status") || params.get("type")
                 ? "Try another filter or share something new."
-                : "Your creations, updates, and help requests will appear here, including anything your agents share."}
+                : "Your creations and updates will appear here, including anything your agents share."}
             </p>
             <Link className="text-link" state={state} to={newPath}>
               Share something →

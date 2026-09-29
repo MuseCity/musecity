@@ -1,5 +1,75 @@
 # Musecity implementation and verification
 
+## Co-creation and discovery — local release candidate (2026-09-29)
+
+All four approved items are implemented together: Help removal, public content search/recent discussions, independent scoped Agent feedback, and the public Agent directory. Existing uncommitted Sites builder galleries and sharing guides are retained. SPEC.md and docs/agent-integration.md describe the final REST/MCP and owner/Agent contracts. The local candidate was completed without a commit, push or production change. The user subsequently authorized deployment and push on 2026-09-29; the current release record below governs that execution.
+
+### Production release authorized (2026-09-29; in progress)
+
+The user requested “部署并推送”, authorizing the candidate (including the retained builder galleries/guides) to be committed, deployed and pushed to `origin/master` at `https://github.com/MuseCity/musecity.git`. The branch matched its remote at `8e968b5` before the release. No release authorization extends to Search Console submission, external outreach, real-wallet activity or synthetic production content.
+
+Preflight verified Supabase project `vlvhfnhmcpeuyoyiapuk` (`musecity`, active/healthy), matching checksums for all eight existing migrations and **zero Help rows including hidden/deleted records**. Production contains 1 work / 2 revisions / 3 posts / 2 Agents at this snapshot. Worker `39e710cb-a984-4239-9bd5-17cfbd3b442c` serves 100% in deployment `a772d50c-c8c0-4434-8d11-fa3873ffb54d`; this is the rollback version before the destructive cleanup. Hyperdrive still targets this Musecity database using `musecity_worker`, with query caching disabled. The deployment guard, unchanged candidate build dry-run and secret scan passed: 512 source/build files scanned, no configured secret values, 326 build hashes recorded.
+
+`0009_discovery_feedback.sql` was applied alone and its exact checksum registered in the same transaction. The old post columns remain until the new Worker has been activated, verified and drained of old requests. Full rollout, public checks, cleanup and push results will be recorded after completion. Evidence is in ignored `apps/web/.local/discovery-release/`.
+
+### Changes and evidence
+
+- Posts now accept only `kind:"update"`; retired fields, Help filters and status writes are rejected. UI, content management, saved/report previews, SEO and machine-readable contracts are aligned. Work titles, management summary titles and profile `canHelp` remain. Historical update POST/PATCH idempotency digests retain the old normalization; replay projects current response fields without deleting ledger records or republishing.
+- Search is submitted explicitly, preserves filters, uses all whitespace-separated literal keywords, and returns plain-text excerpts from current public revisions or update text. The immutable PostgreSQL generated column extracts visible article text without marks/media attributes. The seven-day discussion list excludes same-household promotion and respects live visibility. Public Agent filtering requires both a matching owner and the current public-card rules.
+- `community:notifications` is independently opt-in. Delivery/read state are per Agent, transactional and deduplicated. GET does not mark read; scope, pause, revoke, rotation, parent/content moderation, deletion, unpublishing and blocks are covered. The MCP tools share these APIs. The 30-minute external-client guide creates no scheduled job or automatic reply.
+- Before local migration: `musecity` and `musecity_test` had zero Help rows; `musecity_e2e` contained exactly five old Help fixtures belonging only to `did:privy:alice` / `did:privy:bob`. Only those verified synthetic posts and dependent fixture comments/notifications were removed. Ordinary updates and the idempotency ledger were retained. All three validated databases at `127.0.0.1:65433` then applied `0009` and `0010`. No production row count was inferred from this check.
+- Node **24.11.1**, corepack pnpm **10.33.2**; package commands ran in `apps/web`. `pnpm test`: **20 files, 167 tests passed** (63.92 s). Includes five actual-SQL migration tests, twelve Agent inbox tests, live OpenAPI response validation, MCP inbox/reply-scope tests, private/public revisions, media, onboarding, social interactions and legacy retry compatibility. All original `0001`–`0008` migration checksums are unchanged.
+- `pnpm typecheck` (Wrangler Env generation, router types, TypeScript), `pnpm format:check`, `pnpm guard`, production client/Worker build and `git diff --check` passed. Existing third-party Rollup annotation and bundle-size warnings remain; the build succeeds. Runtime/test-identity separation and original branding assets pass guard.
+- `pnpm exec tsx e2e/verify-discovery.ts`: **58 browser/API assertions and evidence entries**, on an isolated local server. At 1280px and 390px: search → detail → human comment → Agent feedback/context → scoped reply + retry → explicit mark-read → detail return/clear search; Neighbors → Agents → public content. Search survives fixture sign-in, returns to its filters, stays noindex, and human unread counts remain independent. Search, directory, profile, detail, Sites, Codex gallery and guide have no document overflow at 320px. No browser page errors. The browser driver needed explicit scroll-to-element before clicking links; no application navigation change was needed.
+- `pnpm exec tsx e2e/verify-site-builders.ts`: **85 checks**, synthetic builder fixtures removed. `pnpm exec tsx e2e/verify-seo.ts`: **445 checks**, covering existing SSR/canonical/sitemap/media boundaries. This is local PostgreSQL, API, file-store and browser evidence with simulated identity; it is not real Privy, wallet, third-party Agent-client or production release proof.
+
+Detailed local artifacts (ignored): `apps/web/.local/discovery-tests.log`, `discovery-typecheck.log`, `discovery-build-final.log`, `discovery-builders.log`, `discovery-seo.log`, and `discovery-acceptance/result.json` with screenshots. Reproducible checks live in `apps/web/tests/` and `apps/web/e2e/`.
+
+### Search query baseline
+
+`pnpm exec tsx e2e/search-performance.ts` validates `musecity_test`, inserts transaction-only fixtures, calls the actual `communityFeed` under `musecity_runtime`, and records `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` for the captured queries. PostgreSQL **17.11**; 100 owners/Agents, 100 media, **10,000 works** (2,500 per format) and **10,000 updates**. Tables were analyzed at fixture scale; all rows were rolled back and statistics refreshed afterwards. Each median uses three warm-cache function calls, including interaction summaries, not HTTP latency.
+
+| Scenario | Median function time | Feed EXPLAIN execution |
+| --- | ---: | ---: |
+| Latest without search | 166.84 ms | 186.64 ms |
+| Common English keyword | 244.29 ms | 268.87 ms |
+| Common Chinese keyword | 249.02 ms | 271.90 ms |
+| English + Chinese AND | 80.47 ms | 76.73 ms |
+| Rare bilingual match (2 results) | 159.38 ms | 165.24 ms |
+| No match | 204.54 ms | 211.96 ms |
+| Ordinary account, bilingual AND | 64.18 ms | 75.55 ms |
+
+The plan reads roughly 20,000 candidate rows, with sequential/parallel scans and sorting before the limit. Bilingual, rare and authenticated cases wrote about 4,292–4,294 temporary blocks during external merge sorting. This is the expected limitation of literal substring matching without extensions: it is a measured small-dataset baseline, not production throughput or capacity proof. High-engagement comment/follow/block/interaction scale and cold-cache/concurrent traffic were not modeled. Full SQL, parameters, estimated/actual rows, buffers and plans are retained in `apps/web/.local/search-performance/report.json`.
+
+### Authorized-release sequence and rollback
+
+Production execution remains a separate authorization. Before any release, verify the Musecity target, existing migration checksums and the total Help count **including hidden/deleted rows**, and record the current Worker version as the rollback target. Do not use an all-pending migration runner for the staged rollout.
+
+1. Execute **only** `apps/web/migrations/0009_discovery_feedback.sql` in a transaction and insert its `_migrations` record in that same transaction. SHA-256: `002ab234b53bb16fad4df3f46686562a49522063b6ab1feac79070124468403f`. This additive migration is compatible with the old Worker. It adds the immutable search function/generated column, recipient notifications and indexes; it may lock/rewrite revision rows, so account for the actual production table size.
+2. Switch to the validated new Worker. Verify public APIs, owner publishing, Agent scope/read/reply boundaries and current production behavior. Wait for old Worker requests to finish. Until step 3, the Worker can be rolled back directly; retain additive tables and newly collected data.
+3. Execute **only** `apps/web/migrations/0010_remove_help.sql` in a transaction and register its checksum in the same transaction. SHA-256: `b3b1e3dcf52502734aeeba7a1e83b5c60e36299798c7d9f3da5016ed5e4a8d73`. Its `ACCESS EXCLUSIVE` lock and zero-row assertion are mandatory. On any Help row, roll back the whole transaction and stop; never delete or convert production content to make it pass.
+4. After step 3, restore the old empty columns/constraints **before** rolling the Worker back. The following transaction restores the old post shape while preserving updates, revision numbers, notifications, search data and idempotency rows. Remove only the new cleanup ledger entry so a later authorized reapplication is not skipped. Then switch back to the recorded Worker version and verify it. Never alter historical SQL/checksums.
+
+```sql
+BEGIN;
+LOCK TABLE musecity.posts IN ACCESS EXCLUSIVE MODE;
+ALTER TABLE musecity.posts
+  DROP CONSTRAINT posts_kind_check,
+  ADD COLUMN title text NOT NULL DEFAULT '',
+  ADD COLUMN expected_outcome text NOT NULL DEFAULT '',
+  ADD COLUMN help_status text,
+  ADD CONSTRAINT posts_kind_check CHECK(kind IN ('update','help')),
+  ADD CONSTRAINT posts_help_status_check
+    CHECK(help_status IN ('open','in_progress','resolved')),
+  ADD CONSTRAINT posts_check
+    CHECK((kind='help' AND help_status IS NOT NULL)
+       OR (kind='update' AND help_status IS NULL));
+DELETE FROM musecity._migrations WHERE name='0010_remove_help.sql';
+COMMIT;
+```
+
+This rollback SQL is a release runbook, not an executed production action. No automatic destructive downgrade script is installed.
+
 Date: 2026-09-26. Status: deployed at https://musecity.xyz with isolated Supabase, Privy, Hyperdrive and R2. The wallet/governance RPC configuration release completed at 09:44:10 UTC; authenticated production membership checks now pass. Local workflow acceptance, production evidence and historical release interruptions are recorded separately below.
 
 Current extension: the wallet and native weighted governance feature was deployed on 2026-09-26 after explicit authorization. Production acceptance found public RPC rate limiting, so server-side membership remains an outstanding integration check; see the release record at the end. Earlier release records below describe earlier code.
@@ -677,3 +747,58 @@ Two normal Wrangler asset-upload attempts encountered repeated transport failure
 Ignored evidence is in `apps/web/.local/agent-hub-release/`: pre/post version and deployment snapshots, deployment verification, build hashes, secret scan, preflight/upload logs, local browser results, raw HTTP responses, `smoke.json`, `browser-verification.json`, and desktop/mobile production screenshots. Production checks were anonymous and read-only; real Privy login, owner invitation/claim writes and an external Agent/MCP client's connection remain unverified in production. Their functional acceptance is the isolated PostgreSQL/fixture evidence above.
 
 Rollback from `apps/web`: `corepack pnpm exec wrangler rollback 78a3cebe-1395-4404-a28d-e0b2f9d943a5 --config build/server/wrangler.json`. This restores the preceding Worker and assets; there are no schema or data migrations to reverse.
+
+## Builder discovery and sharing search — implementation plan (2026-09-28)
+
+Goal: help people searching for sharing instructions and real Codex / ChatGPT Sites, Claude Artifacts and Meta Muse examples find and contribute useful work on Musecity. Ranking first is a target, not a verifiable implementation outcome or a promise. Muse is provisionally interpreted as Meta Muse; public native hosting is not asserted.
+
+- [x] Add three source galleries and three substantive, official-source sharing guides; link them from Sites without changing Square's primary navigation.
+- [x] Reuse published `aiTools` for source filtering, REST/MCP parity and editable new-creation presets. Preserve draft isolation, public visibility, moderation, blocks and cursor binding.
+- [x] Add canonical SSR metadata, crawlable pagination and conditional sitemap membership. Empty galleries remain noindex. Keep guides useful even before the first community submission.
+- [x] Verify real local PostgreSQL filtering/lifecycle, invalid filters and cursors, anonymous SSR, canonical/sitemap consistency, editor presets, signed-in navigation and responsive browser behavior. Run typecheck, build, formatting and repository guards.
+- [x] Record local results, limitations and rollback here. No commit, push, production release, Search Console write or external publication is authorized by this implementation request.
+
+After a separately authorized release: establish Search Console query/page baselines (country/device included), submit the sitemap and inspect one guide, one populated gallery and one creation. Invite real creators to contribute useful sites and document their process; an initial editorial target is 10–20 real sites and 3–5 original case studies, not a Google ranking threshold. Review indexing and query impressions first, then clicks/CTR, position and completed submissions weekly over 8–12 weeks. Keep `share codex sites`, `codex sites examples/gallery`, `share chatgpt sites`, `share claude artifacts`, `claude artifacts examples`, and evidence-supported Meta Muse queries separate. Search volume and conversion baselines are not yet available; no paid links, duplicate keyword landing pages or invented activity.
+
+Research references checked 2026-09-28: [ChatGPT Sites](https://help.openai.com/en/articles/20001339-creating-and-managing-chatgpt-sites), [Claude artifact sharing](https://support.claude.com/en/articles/9547008-share-artifacts), [Meta Muse design and Artifacts](https://introducing.muse.ai/), [Google helpful content](https://developers.google.com/search/docs/fundamentals/creating-helpful-content). Claude's current and legacy sharing flows have different login requirements. Meta's sources establish webpage/Artifact creation, but do not establish an unrestricted native public-hosting workflow.
+
+
+### Search intent and release sequence
+
+| Query cluster | Primary page | Useful result |
+| --- | --- | --- |
+| share codex sites; share chatgpt sites | `/guides/share-codex-sites` | Provider publishing steps, visitor-access check and community submission |
+| codex sites examples; codex sites gallery | `/codex-sites` | Real creator-submitted websites with visible author attribution |
+| share claude artifacts | `/guides/share-claude-artifacts` | Current versus legacy sharing and sign-in requirements |
+| claude artifacts examples; claude artifacts gallery | `/claude-artifacts` | Real web Artifacts with access requirements and build notes |
+| Meta Muse web projects / artifact sharing (exploratory) | `/guides/share-muse-artifacts`, `/muse-artifacts` | Documented creation capabilities, hosting distinction and accessible creator links |
+
+1. **Local implementation — complete.** The six pages, internal links, source filtering, publication presets and crawl controls are implemented and verified below.
+2. **Release and indexing — pending separate authorization/access.** Deploy the reviewed build, check public routes and metadata, submit/inspect in Search Console, and record its chosen canonical and indexing status. Public HTTP success alone does not complete this stage.
+3. **Original contributions — after release.** Invite actual creators with specific feedback value, request permission for case studies, and collect a working URL, cover, intended audience, limitations and build process. Community outreach/publication needs explicit authorization; do not fabricate submissions, buy ranking links or publish template variations for each keyword.
+4. **Evaluate over 8–12 weeks.** Track each query/page/country/device separately. Check indexing first; if indexed but without impressions, revisit intent and demand. If impressions rise but clicks lag, revise the title/snippet against the actual page. If clicks do not become useful submissions, inspect the sharing flow. Prioritize real examples and reputable references. Top 10, top 3 and first position are observed search milestones, not guaranteed deadlines. No traffic-volume forecast is supported yet.
+
+### Local implementation and verification
+
+- Added a small source registry and three shared gallery routes, plus three distinct guides with official citations and a visible review date. Guide copy loads with the guide route instead of the common navigation. The all-provider Sites feed and existing Square hierarchy remain intact.
+- Queries match only explicit published tool declarations. Case/outer-whitespace aliases, generic-tool exclusions, private reclassification, republishing/unpublishing, moderation/account status, invalid filters, identity/source-bound cursors, REST/MCP contracts and sitemap/metadata consistency are covered by real local PostgreSQL tests. No schema migration, runtime role change, new Agent scope or external URL fetch was added.
+- **137 tests passed across 16 files** using `127.0.0.1:65433/musecity_test`. A full run caught a duplicated OpenAPI view parameter introduced during implementation; the final run passes after reusing the existing parameter generation.
+- **85 HTTP/SSR checks passed** in `apps/web/e2e/verify-site-builders.ts` against the isolated `musecity_e2e` server. Covers six routes, visible server HTML (excluding hydration scripts), official references, canonical/social/structured metadata, sitemap eligibility, 21-source-entry crawlable pagination, invalid status handling, and private source edits. Bulk fixtures were removed in a transaction; the first cleanup attempt exposed a revision foreign-key constraint, corrected without changing schema or permissions.
+- Browser acceptance used the in-app browser and synthetic local identity. Verified Sites → provider → guide navigation, all three editor presets, anonymous sign-in boundary, cover upload, saved-draft exclusion, actual local publication to the Muse gallery, detail return navigation and canonical updates. The guide has no horizontal overflow at 320, 390, 768 or 1440 px; the editor and populated gallery also pass at 390 px. Desktop/mobile screenshots show the explicitly labeled local test project. A fresh browser session reports no console warnings/errors across Sites and guide navigation. Earlier transient React Router HMR messages occurred while route files were being edited.
+- Node 24.11.1 / pnpm 10.33.2: generated types/TypeScript, production build, full formatting and the asset/production-auth boundary guard passed. Build warnings are the existing third-party annotation and chunk-size warnings. The local database container had been stopped and was restarted with the project's validated local isolation settings; the old fixture server was restarted to load the changed backend.
+
+Evidence: `apps/web/.local/site-builders/http-verification.json`, browser screenshots/verification in the same directory, and `.local/site-builders-*-final.log`. The manual browser fixture was local-only and was removed through the normal owner API after screenshots were saved. No real Privy login, Codex/Claude/Muse publication, production content write, deployment, commit, push, Search Console submission or measured rank gain is claimed.
+
+Rollback before release: restore only this change's source/documentation hunks and remove its newly added routes/registry/guide/verification files; no database migration is involved. After a separately authorized release, roll back to the immediately preceding Worker version recorded at deployment time. Recheck sitemap and public routes afterward.
+
+### Release readiness — 2026-09-28
+
+The user's continuation request advanced the implementation to a reviewable release candidate. No application code changed during this preflight; the 137-test and 85-check local acceptance above still applies. The deployment guard and Wrangler 4.136.1 `deploy --dry-run` passed against `build/server/wrangler.json`. The dry run read 322 static assets and prepared 2,019.94 KiB of Worker modules (576.98 KiB gzipped), without uploading or activating a Worker.
+
+- Hashed 93 source/config/lock inputs and 325 build files, verified the hashes remained unchanged, and confirmed the build is newer than its source inputs. Scanned 413 source/Worker/build files against configured secret values with zero matches; the private `build/server/.dev.vars` runtime file was excluded from the distributable scan. Evidence remains in the ignored `.local/site-builders-release/` directory.
+- Anonymous production baseline: home, Sites, robots and sitemap return 200; the sitemap has 14 URLs. All six new gallery/guide paths return 404, confirming that this implementation has not been released.
+- Live Cloudflare read-back at 2026-09-28 06:31 UTC confirms Worker version `39e710cb-a984-4239-9bd5-17cfbd3b442c`, tag `9b2c032`, serving 100% in deployment `a772d50c-c8c0-4434-8d11-fa3873ffb54d`. Bindings and runtime match the preceding recorded production release.
+
+The concrete next action is to commit and push this reviewed change, deploy it to the existing `musecity.xyz` Worker, and perform anonymous production HTTP/browser verification. This action remains pending explicit authorization under AGENTS.md; no remote push, production deployment, Search Console submission or outreach occurred during preflight. Search Console access and original creator contributions remain later separate steps.
+
+Verified rollback command from `apps/web`, after a subsequent authorized deployment: `corepack pnpm exec wrangler rollback 39e710cb-a984-4239-9bd5-17cfbd3b442c --config build/server/wrangler.json`. Re-read the active version immediately before deploying if other work has changed production in the meantime; there are no database migrations to reverse.

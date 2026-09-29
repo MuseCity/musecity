@@ -1,8 +1,9 @@
+import { galleryBuilder, guideBuilder } from "./site-builders";
+
 export const contentKinds = [
   ["all", "All"],
   ["work", "Creations"],
   ["update", "Updates"],
-  ["help", "Help requests"],
 ] as const;
 
 export function contentKind(params: URLSearchParams) {
@@ -36,6 +37,7 @@ export function contentHref(
   const next = currentListParams(search);
   next.delete("cursor");
   if (key === "tab") {
+    next.delete("builder");
     if (value === "sites" || next.get("view") === "sites")
       for (const incompatible of ["kind", "type", "help", "status"])
         next.delete(incompatible);
@@ -49,13 +51,13 @@ export function contentHref(
   if (key === "kind") {
     if (value !== "work")
       for (const incompatible of ["type", "status"]) next.delete(incompatible);
-    if (value !== "help") next.delete("help");
   }
   if (key === "type") {
     next.set("kind", "work");
     next.delete("help");
   }
-  if (value && value !== "all") next.set(key, value);
+  if (value && !(value === "all" && ["kind", "type", "status"].includes(key)))
+    next.set(key, value);
   else next.delete(key);
   return path + (next.size ? "?" + next : "");
 }
@@ -69,6 +71,7 @@ export function publicContentParams(search: string, owner?: string) {
   if (owner) {
     params.set("owner", owner);
     params.delete("view");
+    params.delete("builder");
   }
   if (params.get("view") === "sites") {
     if (!params.has("kind")) params.set("kind", "work");
@@ -79,7 +82,6 @@ export function publicContentParams(search: string, owner?: string) {
 
 export function shareHref(kind: string, tag?: string | null) {
   const params = new URLSearchParams();
-  if (kind === "help") params.set("kind", "help");
   if (kind === "sites") params.set("from", "sites");
   if (tag) params.set("tag", tag);
   return (
@@ -97,11 +99,14 @@ export type ContentOrigin = {
 export function validOrigin(value: unknown): ContentOrigin | null {
   if (!value || typeof value !== "object") return null;
   const origin = value as ContentOrigin;
+  const path = typeof origin.path === "string" ? origin.path.split("?")[0] : "";
+  const builder = galleryBuilder(path) ?? guideBuilder(path);
   if (
     typeof origin.path !== "string" ||
-    !/^(\/(?:\?|$)|\/me\/content(?:\?|$)|\/u\/[\w-]+(?:\?|$)|\/notifications(?:\?|$))/.test(
-      origin.path,
-    )
+    (!builder &&
+      !/^(\/(?:\?|$)|\/me\/content(?:\?|$)|\/u\/[\w-]+(?:\?|$)|\/notifications(?:\?|$))/.test(
+        origin.path,
+      ))
   )
     return null;
   const cleaned = retiredEcosystemPath(
@@ -109,13 +114,15 @@ export function validOrigin(value: unknown): ContentOrigin | null {
   );
   return {
     path: cleaned ?? origin.path,
-    label: origin.path.startsWith("/me/")
-      ? "My content"
-      : origin.path.startsWith("/u/")
-        ? "Profile"
-        : origin.path.startsWith("/notifications")
-          ? "Notifications"
-          : "Square",
+    label: builder
+      ? builder.name
+      : origin.path.startsWith("/me/")
+        ? "My content"
+        : origin.path.startsWith("/u/")
+          ? "Profile"
+          : origin.path.startsWith("/notifications")
+            ? "Notifications"
+            : "Square",
     index:
       !cleaned && Number.isInteger(origin.index) ? origin.index : undefined,
     key: !cleaned && typeof origin.key === "string" ? origin.key : undefined,

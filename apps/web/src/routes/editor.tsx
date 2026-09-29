@@ -30,6 +30,7 @@ import { UploadImage } from "../components/upload";
 import { MediaImage } from "../components/media-image";
 import { ArticleEditor } from "../components/article-editor";
 import { WorkBody } from "../components/work-detail";
+import { siteBuilder } from "../shared/site-builders";
 const emptyDocument: ArticleNode = {
   type: "doc",
   content: [{ type: "paragraph" }],
@@ -44,9 +45,10 @@ const blank: WorkContent = {
 };
 export default function EditorPage() {
   const { id } = useParams();
+  const location = useLocation();
   return (
     <RequireAuth>
-      <Editor key={id ?? "new"} id={id} />
+      <Editor key={id ?? "new" + location.search} id={id} />
     </RequireAuth>
   );
 }
@@ -57,11 +59,15 @@ function Editor({ id }: { id?: string }) {
   const location = useLocation();
   const siteEntry =
     !id && new URLSearchParams(location.search).get("from") === "sites";
+  const builder = siteEntry
+    ? siteBuilder(new URLSearchParams(location.search).get("builder"))
+    : undefined;
   const state = useContentSource();
   const back = useContentReturn("/me/content?kind=work");
   const [body, setBody] = useState<WorkContent>(() => ({
     ...blank,
     ...(siteEntry ? { aiDeclaration: true } : {}),
+    ...(builder ? { aiTools: [builder.tool] } : {}),
     tagIds: topics
       .filter((t) => t.id === new URLSearchParams(location.search).get("tag"))
       .map((t) => t.id),
@@ -253,13 +259,23 @@ function Editor({ id }: { id?: string }) {
             {saved?.status === "published"
               ? "Changes stay private until you publish again."
               : siteEntry
-                ? "Add your website link, a cover, and how you built it."
+                ? builder
+                  ? `Share what you built with ${builder.name}. Add a link, a cover and your build notes.`
+                  : "Add your website link, a cover, and how you built it."
                 : "A small idea can make someone’s day."}
           </p>
         </div>
         {saved && <span className="status-chip">{saved.status}</span>}
       </div>
       {!id && !siteEntry && <ShareOptions kind="work" />}
+      {builder && (
+        <p className="text-muted text-sm mb-5">
+          {builder.access}{" "}
+          <Link className="text-link" to={builder.guidePath}>
+            Sharing guide →
+          </Link>
+        </p>
+      )}
       {saved?.restricted && (
         <Notice>
           This creation is hidden by moderation. Editing and publishing are

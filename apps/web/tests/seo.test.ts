@@ -19,6 +19,9 @@ import { servicesContext } from "../src/context";
 import { publicRead } from "../src/route-data";
 import { loader as guideLoader } from "../src/routes/mcp-guide";
 import { loader as onboardingLoader } from "../src/routes/agent-onboarding";
+import { loader as siteGuideLoader } from "../src/routes/site-guide";
+import { loader as galleryLoader } from "../src/routes/site-gallery";
+import { siteBuilders } from "../src/shared/site-builders";
 
 const comments: Page<CommentView> = { items: [], nextCursor: null };
 const origin = "https://musecity.xyz";
@@ -38,6 +41,9 @@ describe("public search discovery", () => {
     for (const [path, loader] of [
       ["/agents/mcp", guideLoader],
       ["/agents", onboardingLoader],
+      ...siteBuilders.map(
+        (builder) => [builder.guidePath, siteGuideLoader] as const,
+      ),
     ] as const) {
       const result = loader({
         request: new Request(origin + path + ".data?_routes=route"),
@@ -72,6 +78,15 @@ describe("public search discovery", () => {
           "/feed",
         ),
       ).rejects.toMatchObject({ status });
+      await expect(
+        galleryLoader({
+          request: new Request(origin + "/codex-sites"),
+          url: new URL(origin + "/codex-sites"),
+          pattern: "/codex-sites",
+          params: {},
+          context,
+        }),
+      ).rejects.toMatchObject({ status });
     }
   });
   it("keeps Sites, tags and pagination canonical while excluding private and filtered pages", () => {
@@ -86,12 +101,18 @@ describe("public search discovery", () => {
       "/governance/prp_1",
       "/agents/mcp",
       "/agents",
+      ...siteBuilders.flatMap((builder) => [builder.path, builder.guidePath]),
     ])
       expect(publicIndexable(new URL(path, origin))).toBe(true);
     for (const path of [
       "/?view=following",
       "/?kind=work",
+      "/?q=design",
+      "/?owner=alice&agent=agent_1",
+      "/u/alice?agent=agent_1",
+      "/u/alice?q=design",
       "/?view=sites&tag=design",
+      "/?view=sites&builder=codex",
       "/neighbors?q=alice",
       "/u/alice?kind=work",
       "/posts/post_1?edit=1",
@@ -111,6 +132,20 @@ describe("public search discovery", () => {
         new URL("/?utm_source=x&tag=design&cursor=abc%2B%2F%3D", origin),
       ),
     ).toBe("/?tag=design&cursor=abc%2B%2F%3D");
+    for (const path of [
+      "/?q=design&cursor=next",
+      "/u/alice?agent=agent_1&q=design&cursor=next",
+      "/neighbors?view=agents&q=design&cursor=next",
+    ]) {
+      const canonical = new URL(
+        canonicalPath(new URL(path + "&utm_source=x", origin)),
+        origin,
+      );
+      const expected = new URL(path, origin);
+      expect(Object.fromEntries(canonical.searchParams)).toEqual(
+        Object.fromEntries(expected.searchParams),
+      );
+    }
     expect(canonicalPath(new URL("/posts/p?comment=c&edit=1", origin))).toBe(
       "/posts/p",
     );
@@ -126,6 +161,10 @@ describe("public search discovery", () => {
     expect(paginationHref("/posts/p", "new", "commentCursor")).toBe(
       "/posts/p?commentCursor=new#conversation",
     );
+    for (const builder of siteBuilders)
+      expect(
+        paginationHref(builder.path + "?utm_source=x&cursor=old", "next"),
+      ).toBe(builder.path + "?cursor=next");
     const seo = pageSeo(origin, new URL("https://untrusted.example/works/w"), {
       title: "Test",
       description: "Summary",

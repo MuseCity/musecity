@@ -90,17 +90,131 @@ async function control(
 }
 
 describe("MCP over Streamable HTTP with the real local PostgreSQL API", () => {
+  it("handles scoped Agent feedback end-to-end without granting replies", async () => {
+    const f = fixture(),
+      ag = await activate(f, [
+        ...draftScopes,
+        "community:post",
+        "community:notifications",
+      ]),
+      client = await connect(f, ag.token);
+    const created = await call(client, "create_post", {
+      content: { kind: "update", text: "MCP feedback workflow" },
+      idempotencyKey: crypto.randomUUID(),
+    });
+    expect(created.data.httpStatus).toBe(201);
+    const comment = await f.call(`/posts/${created.data.id}/comments`, {
+      token: "fixture:bob",
+      method: "POST",
+      body: { text: "A human's useful feedback" },
+    });
+    expect(comment.status).toBe(201);
+    const inbox = await call(client, "list_agent_notifications");
+    expect(inbox.data.httpStatus).toBe(200);
+    expect(inbox.data.unread).toBe(1);
+    expect(inbox.data.items[0].commentId).toBe(comment.data.id);
+    expect((await call(client, "list_agent_notifications")).data.unread).toBe(
+      1,
+    );
+    const context = await call(client, "list_comments", {
+      kind: "post",
+      id: created.data.id,
+      focus: comment.data.id,
+    });
+    expect(context.data.items.map((c: { id: string }) => c.id)).toContain(
+      comment.data.id,
+    );
+    expect(
+      (
+        await call(client, "reply", {
+          kind: "post",
+          id: created.data.id,
+          text: "Not authorized",
+          idempotencyKey: crypto.randomUUID(),
+        })
+      ).data.httpStatus,
+    ).toBe(403);
+    const args = {
+      ids: [inbox.data.items[0].id],
+      idempotencyKey: crypto.randomUUID(),
+    };
+    expect(
+      (await call(client, "mark_agent_notifications_read", args)).data.read,
+    ).toBe(true);
+    expect(
+      (await call(client, "mark_agent_notifications_read", args)).data.read,
+    ).toBe(true);
+    expect((await call(client, "list_agent_notifications")).data.unread).toBe(
+      0,
+    );
+    expect(
+      (await call(client, "list_agent_notifications", { unread: false })).data
+        .items,
+    ).toHaveLength(1);
+    const other = await activate(f),
+      otherClient = await connect(f, other.token);
+    expect(
+      (await call(otherClient, "list_agent_notifications")).data.httpStatus,
+    ).toBe(403);
+  });
+
   for (const modern of [false, true])
     it(`connects a ${modern ? "2026" : "2025"} SDK client and discovers usable tools and resources`, async () => {
       const f = fixture();
       const agent = await activate(f);
       const client = await connect(f, agent.token, modern);
       const tools = await client.listTools();
-      expect(tools.tools).toHaveLength(19);
+      expect(tools.tools.map((tool) => tool.name)).toEqual(
+        expect.arrayContaining([
+          "list_feed",
+          "list_neighbors",
+          "list_discovery",
+          "list_agent_notifications",
+          "mark_agent_notifications_read",
+        ]),
+      );
       expect(tools.tools.map((t) => t.name)).toContain("create_creation");
+      const feedTool = tools.tools.find((tool) => tool.name === "list_feed")!;
+      expect(feedTool.inputSchema.properties).toHaveProperty("q");
+      expect(feedTool.inputSchema.properties).toHaveProperty("agent");
+      expect(feedTool.inputSchema.properties).not.toHaveProperty("help");
+      expect(
+        (await call(client, "list_feed", { q: "设计 React" })).data.httpStatus,
+      ).toBe(200);
+      expect(
+        (await call(client, "list_neighbors", { view: "agents" })).data
+          .httpStatus,
+      ).toBe(200);
+      expect((await call(client, "list_discovery")).data.httpStatus).toBe(200);
+      for (const args of [{ kind: "help" }, { help: "open" }])
+        expect(
+          (await client.callTool({ name: "list_feed", arguments: args }))
+            .isError,
+        ).toBe(true);
+      expect(
+        tools.tools.find((tool) => tool.name === "list_comments")!.inputSchema
+          .properties,
+      ).toHaveProperty("focus");
       const sites = await call(client, "list_feed", { view: "sites" });
       expect(sites.data.httpStatus).toBe(200);
       expect(sites.response.isError).not.toBe(true);
+      for (const builder of ["codex", "claude", "muse"]) {
+        expect(
+          (await call(client, "list_feed", { view: "sites", builder })).data
+            .httpStatus,
+        ).toBe(200);
+      }
+      expect(
+        (await call(client, "list_feed", { builder: "codex" })).data.httpStatus,
+      ).toBe(400);
+      expect(
+        (
+          await client.callTool({
+            name: "list_feed",
+            arguments: { view: "sites", builder: "unknown" },
+          })
+        ).isError,
+      ).toBe(true);
       for (const name of ["list_feed", "list_neighbors"]) {
         const tool = tools.tools.find((t) => t.name === name)!;
         expect(tool.inputSchema.properties).not.toHaveProperty("ecosystem");
@@ -407,6 +521,29 @@ describe("MCP over Streamable HTTP with the real local PostgreSQL API", () => {
       (await call(client, "list_comments", { kind: "post", id: post.data.id }))
         .data.items,
     ).toHaveLength(1);
+    expect(
+      (await call(client, "list_feed", { q: "HELLO again" })).data.items.map(
+        (item: { id: string }) => item.id,
+      ),
+    ).toEqual([post.data.id]);
+    expect(
+      (
+        await call(client, "list_comments", {
+          kind: "post",
+          id: post.data.id,
+          focus: reply.data.id,
+        })
+      ).data.items[0].id,
+    ).toBe(reply.data.id);
+    expect(
+      (
+        await call(client, "list_comments", {
+          kind: "post",
+          id: post.data.id,
+          focus: "missing-comment",
+        })
+      ).data.httpStatus,
+    ).toBe(404);
     const png = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVQImWP4z8DQAAAEgQGADgLFJAAAAABJRU5ErkJggg==",
       "base64",

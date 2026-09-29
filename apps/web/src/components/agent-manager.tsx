@@ -262,6 +262,10 @@ export function AgentManager({ embedded = false }: { embedded?: boolean }) {
                   ? "Replies enabled"
                   : "Replies off"}{" "}
                 ·{" "}
+                {a.scopes.includes("community:notifications")
+                  ? "Conversation notifications enabled"
+                  : "Conversation notifications off"}{" "}
+                ·{" "}
                 {a.publicVisible
                   ? "Public profile enabled"
                   : "Public profile off"}

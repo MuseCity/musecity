@@ -1,4 +1,7 @@
+import { notifyAgentFeedback } from "./agent-notifications";
+import { normalizeSearch, matchExcerpt } from "../shared/search";
 import { interactionSummaries } from "./interactions";
+import { siteBuilder } from "../shared/site-builders";
 import type { InteractionKind, SavedItem } from "../shared/interactions";
 import type { Database } from "./database";
 import { profile, profileSql, audit, dailyBudget, type Actor } from "./auth";
@@ -18,6 +21,7 @@ import {
   type CommunityNotification,
   type ReportView,
   type Profile,
+  type PublicAgentCard,
   type WorkView,
 } from "../shared/contracts";
 
@@ -99,15 +103,51 @@ export async function neighbors(
   db: Database,
   params: URLSearchParams,
   viewer?: Actor,
-): Promise<Page<Profile>> {
+): Promise<Page<Profile> | Page<PublicAgentCard>> {
   rejectRetiredFilter(params);
-  const query = params.get("q")?.trim() ?? "";
+  const query = normalizeSearch(params.get("q"));
+  const view = params.get("view") ?? "people";
+  requireValue(
+    ["people", "agents"].includes(view),
+    400,
+    "INVALID_FILTER",
+    "Choose People or Agents.",
+  );
   requireValue(
     query.length <= 120,
     400,
     "INVALID_FILTER",
     "Search is too long.",
   );
+  if (view === "agents") {
+    const filter = JSON.stringify(["public-agents", query, viewer?.account.id]),
+      cursor = decodeCursor(params.get("cursor"), filter);
+    const rows = await db.query<{
+      id: string;
+      name: string;
+      description: string;
+      owner: Profile;
+      createdAt: Date;
+    }>(
+      `SELECT g.id,g.name,g.description,${profileSql("a")} AS owner,g.created_at AS "createdAt"
+       FROM musecity.agents g JOIN musecity.accounts a ON a.id=g.owner_account_id
+       WHERE g.public_visible AND g.status<>'revoked' AND a.status='active' AND a.joined_at IS NOT NULL
+       AND ${unblockedSql("a.id", "$2")}
+       AND ($1='' OR strpos(lower(g.name||' '||g.description||' '||a.name||' '||a.handle),lower($1))>0)
+       AND ($3::timestamptz IS NULL OR (g.created_at,g.id)<($3,$4)) ORDER BY g.created_at DESC,g.id DESC LIMIT 21`,
+      [
+        query,
+        viewer?.account.id ?? null,
+        cursor?.time ?? null,
+        cursor?.id ?? null,
+      ],
+    );
+    const result = page(rows, filter, (r) => r.createdAt.toISOString());
+    return {
+      ...result,
+      items: result.items.map(({ createdAt, ...card }) => card),
+    };
+  }
   const filter = JSON.stringify(["neighbors", query, viewer?.account.id]),
     cursor = decodeCursor(params.get("cursor"), filter);
   const rows = await db.query<{ profile: Profile }>(
@@ -166,7 +206,7 @@ export async function target(
     await requireUnblocked(db, viewer.account.id, row.owner_account_id);
   return row.owner_account_id;
 }
-const postSelect = `SELECT p.id,p.kind,p.text,p.title,p.expected_outcome AS "expectedOutcome",p.media_ids AS "mediaIds",p.tag_ids AS "tagIds",p.help_status AS "helpStatus",p.revision,p.created_at AS "createdAt",p.updated_at AS "updatedAt",${profileSql("a")} AS owner,${agentSql("g")} AS agent
+const postSelect = `SELECT p.id,p.kind,p.text,p.media_ids AS "mediaIds",p.tag_ids AS "tagIds",p.revision,p.created_at AS "createdAt",p.updated_at AS "updatedAt",${profileSql("a")} AS owner,${agentSql("g")} AS agent
  FROM musecity.posts p JOIN musecity.accounts a ON a.id=p.owner_account_id LEFT JOIN musecity.agents g ON g.id=p.agent_id`;
 export async function postView(
   db: Database,
@@ -185,6 +225,7 @@ export async function communityFeed(
   db: Database,
   params: URLSearchParams,
   viewer?: Actor,
+  recent = false,
 ): Promise<Page<CommunityItem>> {
   rejectRetiredFilter(params);
   const view = params.get("view") ?? "latest",
@@ -192,19 +233,51 @@ export async function communityFeed(
     type = params.get("type"),
     tag = params.get("tag"),
     owner = params.get("owner"),
-    help = params.get("help");
+    query = normalizeSearch(params.get("q")),
+    agentId = params.get("agent"),
+    builderId = params.get("builder"),
+    builder = siteBuilder(builderId);
+  requireValue(
+    !params.has("help") && query.length <= 120,
+    400,
+    "INVALID_FILTER",
+    "Use a search of at most 120 characters; help filters are retired.",
+  );
+  if (agentId) {
+    requireValue(
+      owner,
+      400,
+      "INVALID_FILTER",
+      "Agent filtering requires an owner.",
+    );
+    const visible = await db.one(
+      `SELECT g.id FROM musecity.agents g JOIN musecity.accounts a ON a.id=g.owner_account_id WHERE g.id=$1 AND a.handle=$2 AND g.public_visible AND g.status<>'revoked' AND a.status='active' AND a.joined_at IS NOT NULL AND ${unblockedSql("a.id", "$3")}`,
+      [agentId, owner, viewer?.account.id ?? null],
+    );
+    requireValue(
+      visible,
+      404,
+      "NOT_FOUND",
+      "This public Agent is unavailable.",
+    );
+  }
+  requireValue(
+    !params.has("builder") || (view === "sites" && builder),
+    400,
+    "INVALID_FILTER",
+    "Choose a supported builder within Sites.",
+  );
   requireValue(
     ["latest", "following", "sites"].includes(view) &&
-      (!kind || ["work", "update", "help"].includes(kind)) &&
-      (!type || workTypes.includes(type as (typeof workTypes)[number])) &&
-      (!help || help === "open"),
+      (!kind || ["work", "update"].includes(kind)) &&
+      (!type || workTypes.includes(type as (typeof workTypes)[number])),
     400,
     "INVALID_FILTER",
     "Choose valid community filters.",
   );
   requireValue(
     view !== "sites" ||
-      ((!kind || kind === "work") && (!type || type === "website") && !help),
+      ((!kind || kind === "work") && (!type || type === "website")),
     400,
     "INVALID_FILTER",
     "Sites contains AI-assisted websites only.",
@@ -223,28 +296,31 @@ export async function communityFeed(
       "Unknown topic.",
     );
   const filter = JSON.stringify([
-      "shared-tags-v1",
+      "discovery-v1",
       view,
       kind,
       type,
       tag,
       owner,
-      help,
+      query,
+      agentId,
       viewer?.account.id,
+      ...(builder ? [builder.id] : []),
     ]),
     cursor = decodeCursor(params.get("cursor"), filter);
   const rows = await db.query<{
     id: string;
-    kind: "work" | "update" | "help";
+    kind: "work" | "update";
     createdAt: Date;
     commentCount: number;
     payload: unknown;
+    searchText: string;
     owner: Profile;
     agent: { id: string; name: string } | null;
   }>(
     `
  WITH entries AS (
- SELECT w.id,'work' AS kind,w.owner_account_id,w.created_by_agent_id AS agent_id,w.first_published_at AS created_at,
+ SELECT w.id,'work' AS kind,w.owner_account_id,w.created_by_agent_id AS agent_id,w.first_published_at AS created_at,r.search_text,
  jsonb_build_object('workId',w.id,'revisionId',r.id,'publishedRevisionId',r.id,'status',w.status,
  'body',r.payload-'articleDocument'||jsonb_build_object('description',left(COALESCE(NULLIF(r.payload->>'description',''),r.payload->>'title',''),240)),
  'submittedBy',${agentSql("s")},'publishedBy',${agentSql("p")},'publishedAt',w.published_at,'updatedAt',w.updated_at) AS payload
@@ -252,28 +328,40 @@ export async function communityFeed(
  LEFT JOIN musecity.agents s ON s.id=w.created_by_agent_id LEFT JOIN musecity.agents p ON p.id=w.published_by_agent_id
  WHERE w.status='published' AND NOT w.blocked AND ($1::text IS NULL OR r.payload->>'type'=$1) AND ($2::text IS NULL OR $2=ANY(r.tag_ids))
  AND ($7<>'sites' OR (r.payload->>'type'='website' AND r.payload->'aiDeclaration'='true'::jsonb))
+ AND ($10::text[] IS NULL OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(COALESCE(r.payload->'aiTools','[]'::jsonb)) AS tools(tool) WHERE lower(btrim(tool))=ANY($10)))
  UNION ALL
- SELECT p.id,p.kind,p.owner_account_id,p.agent_id,p.created_at,
- jsonb_build_object('id',p.id,'kind',p.kind,'text',p.text,'title',p.title,'expectedOutcome',p.expected_outcome,'mediaIds',p.media_ids,'tagIds',p.tag_ids,'helpStatus',p.help_status,'revision',p.revision,'createdAt',p.created_at,'updatedAt',p.updated_at)
- FROM musecity.posts p WHERE NOT p.deleted AND NOT p.blocked AND $7<>'sites' AND $1::text IS NULL AND ($2::text IS NULL OR p.tag_ids @> ARRAY[$2]::text[]) AND ($3::text IS NULL OR (p.kind='help' AND p.help_status='open'))
- ) SELECT e.id,e.kind,e.created_at AS "createdAt",e.payload,${profileSql("a")} AS owner,${agentSql("g")} AS agent,
+ SELECT p.id,p.kind,p.owner_account_id,p.agent_id,p.created_at,p.text AS search_text,
+ jsonb_build_object('id',p.id,'kind',p.kind,'text',p.text,'mediaIds',p.media_ids,'tagIds',p.tag_ids,'revision',p.revision,'createdAt',p.created_at,'updatedAt',p.updated_at)
+ FROM musecity.posts p WHERE NOT p.deleted AND NOT p.blocked AND $7<>'sites' AND $1::text IS NULL AND ($2::text IS NULL OR p.tag_ids @> ARRAY[$2]::text[])
+ ) SELECT e.id,e.kind,e.created_at AS "createdAt",e.payload,CASE WHEN cardinality($3::text[])>0 THEN e.search_text ELSE '' END AS "searchText",${profileSql("a")} AS owner,${agentSql("g")} AS agent,
  (SELECT count(*)::integer FROM musecity.comments c JOIN musecity.accounts ca ON ca.id=c.owner_account_id WHERE (c.work_id=e.id OR c.post_id=e.id) AND NOT c.deleted AND NOT c.blocked AND ca.status='active' AND ${unblockedSql("ca.id", "$4")}) AS "commentCount"
  FROM entries e JOIN musecity.accounts a ON a.id=e.owner_account_id LEFT JOIN musecity.agents g ON g.id=e.agent_id
+ ${
+   recent
+     ? `JOIN LATERAL (SELECT max(c.created_at) AS last_reply FROM musecity.comments c JOIN musecity.accounts ca ON ca.id=c.owner_account_id
+ WHERE (c.work_id=e.id OR c.post_id=e.id) AND c.created_at>=clock_timestamp()-interval '7 days'
+ AND c.owner_account_id<>e.owner_account_id AND NOT c.deleted AND NOT c.blocked AND ca.status='active' AND ${unblockedSql("ca.id", "$4")}) active ON active.last_reply IS NOT NULL`
+     : ""
+ }
  WHERE a.status='active' AND ${unblockedSql("a.id", "$4")}
+ AND NOT EXISTS(SELECT 1 FROM unnest($3::text[]) term WHERE strpos(lower(e.search_text),lower(term))=0)
+ AND ($11::text IS NULL OR e.agent_id=$11)
  AND ($5::text IS NULL OR e.kind=$5) AND ($6::text IS NULL OR a.handle=$6)
  AND ($7<>'following' OR EXISTS(SELECT 1 FROM musecity.follows f WHERE f.follower_id=$4 AND f.followed_id=a.id))
- AND ($3::text IS NULL OR e.kind='help') AND ($8::timestamptz IS NULL OR (e.created_at,e.id)<($8,$9))
- ORDER BY e.created_at DESC,e.id DESC LIMIT 21`,
+ AND ($8::timestamptz IS NULL OR (e.created_at,e.id)<($8,$9))
+ ORDER BY ${recent ? "active.last_reply" : "e.created_at"} DESC,e.id DESC LIMIT ${recent ? 5 : 21}`,
     [
       type,
       tag,
-      help,
+      query ? query.split(" ") : [],
       viewer?.account.id ?? null,
       kind,
       owner,
       view,
       cursor?.time ?? null,
       cursor?.id ?? null,
+      builder?.aliases ?? null,
+      agentId,
     ],
   );
   const interactions = await interactionSummaries(
@@ -286,6 +374,7 @@ export async function communityFeed(
       id: r.id,
       createdAt: r.createdAt.toISOString(),
       commentCount: r.commentCount,
+      ...(query ? { matchExcerpt: matchExcerpt(r.searchText, query) } : {}),
     };
     return r.kind === "work"
       ? {
@@ -309,6 +398,10 @@ export async function communityFeed(
         };
   }) as CommunityItem[];
   return page(items, filter, (r) => r.createdAt);
+}
+export async function communityDiscovery(db: Database, viewer?: Actor) {
+  const result = await communityFeed(db, new URLSearchParams(), viewer, true);
+  return { items: result.items };
 }
 async function validateImages(db: Database, a: Actor, ids: string[]) {
   for (const mediaId of ids)
@@ -357,31 +450,21 @@ export async function savePost(
       "Keep the original post type.",
     );
     await db.query(
-      "UPDATE musecity.posts SET text=$2,title=$3,expected_outcome=$4,media_ids=$5,tag_ids=$6,revision=revision+1,updated_at=date_trunc('milliseconds',clock_timestamp()) WHERE id=$1",
-      [
-        postId,
-        content.text,
-        content.title,
-        content.expectedOutcome,
-        content.mediaIds,
-        content.tagIds,
-      ],
+      "UPDATE musecity.posts SET text=$2,media_ids=$3,tag_ids=$4,revision=revision+1,updated_at=date_trunc('milliseconds',clock_timestamp()) WHERE id=$1",
+      [postId, content.text, content.mediaIds, content.tagIds],
     );
   } else {
     await dailyBudget(db, a, "publication");
     postId = id("post");
     await db.query(
-      "INSERT INTO musecity.posts(id,owner_account_id,agent_id,kind,text,title,expected_outcome,media_ids,help_status,tag_ids) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+      "INSERT INTO musecity.posts(id,owner_account_id,agent_id,kind,text,media_ids,tag_ids) VALUES($1,$2,$3,$4,$5,$6,$7)",
       [
         postId,
         a.account.id,
         a.agent?.id ?? null,
         content.kind,
         content.text,
-        content.title,
-        content.expectedOutcome,
         content.mediaIds,
-        content.kind === "help" ? "open" : null,
         content.tagIds,
       ],
     );
@@ -394,7 +477,6 @@ export async function changePost(
   a: Actor,
   postId: string,
   revision: number,
-  status?: string,
 ) {
   const row = await db.one<{
     revision: number;
@@ -411,30 +493,12 @@ export async function changePost(
     "REVISION_CONFLICT",
     "Reload this post before changing it.",
   );
-  if (status) {
-    requireValue(
-      !row.blocked,
-      423,
-      "CONTENT_BLOCKED",
-      "This post is hidden by moderation.",
-    );
-    requireValue(
-      row.kind === "help",
-      400,
-      "VALIDATION_ERROR",
-      "Only requests have a progress status.",
-    );
-    await db.query(
-      "UPDATE musecity.posts SET help_status=$2,revision=revision+1,updated_at=date_trunc('milliseconds',clock_timestamp()) WHERE id=$1",
-      [postId, status],
-    );
-  } else
-    await db.query(
-      "UPDATE musecity.posts SET deleted=true,revision=revision+1 WHERE id=$1",
-      [postId],
-    );
-  await audit(db, a, status ? "post.status" : "post.delete", postId);
-  return status ? postView(db, postId, a) : { deleted: true };
+  await db.query(
+    "UPDATE musecity.posts SET deleted=true,revision=revision+1 WHERE id=$1",
+    [postId],
+  );
+  await audit(db, a, "post.delete", postId);
+  return { deleted: true };
 }
 export async function relation(db: Database, a: Actor, accountId: string) {
   return {
@@ -671,6 +735,7 @@ export async function reply(
       commentId,
       commentId,
     );
+  await notifyAgentFeedback(db, a, commentId, kind, targetId, parentId);
   await audit(db, a, "community.reply", commentId);
   return { id: commentId };
 }
@@ -788,7 +853,7 @@ export async function reports(
   const rows = await db.query<ReportView>(
     `SELECT r.id,r.target_kind AS "targetKind",r.target_id AS "targetId",r.reason,r.status,r.created_at AS "createdAt",
     CASE r.target_kind WHEN 'work' THEN (SELECT left(v.payload->>'title'||E'\\n'||COALESCE(v.payload->>'description',''),2000) FROM musecity.works w LEFT JOIN musecity.work_revisions v ON v.id=w.published_revision_id WHERE w.id=r.target_id)
-    WHEN 'post' THEN (SELECT left(p.title||E'\\n'||p.text,2000) FROM musecity.posts p WHERE p.id=r.target_id)
+    WHEN 'post' THEN (SELECT left(p.text,2000) FROM musecity.posts p WHERE p.id=r.target_id)
     WHEN 'proposal' THEN (SELECT left(p.title||E'\\n'||p.body,2000) FROM musecity.proposals p WHERE p.id=r.target_id)
     WHEN 'comment' THEN (SELECT left(c.text,2000) FROM musecity.comments c WHERE c.id=r.target_id)
     ELSE (SELECT a.name||E'\\n'||a.bio FROM musecity.accounts a WHERE a.id=r.target_id) END AS preview,
@@ -929,7 +994,7 @@ export async function savedContent(
       FROM musecity.works w JOIN musecity.work_revisions r ON r.id=w.published_revision_id
       WHERE w.status='published' AND NOT w.blocked
       UNION ALL
-      SELECT p.id,'post',p.owner_account_id,p.agent_id,CASE WHEN p.kind='help' THEN p.title ELSE 'Update' END,left(p.text,240),'/posts/'||p.id
+      SELECT p.id,'post',p.owner_account_id,p.agent_id,'Update',left(p.text,240),'/posts/'||p.id
       FROM musecity.posts p WHERE NOT p.deleted AND NOT p.blocked
       UNION ALL
       SELECT c.id,'comment',c.owner_account_id,c.agent_id,'Reply',left(c.text,240),

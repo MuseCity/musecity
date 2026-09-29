@@ -164,7 +164,7 @@ describe("shared homepage tags through local PostgreSQL", () => {
     ).toBe(400);
   });
 
-  it("mixes different owners' creations, updates and help under one tag, with category and format filters", async () => {
+  it("mixes different owners' creations and updates under one tag, with category and format filters", async () => {
     const f = fixture(),
       tag = (await f.call("/tags", { method: "POST", body: { name: "Music" } }))
         .data;
@@ -173,14 +173,12 @@ describe("shared homepage tags through local PostgreSQL", () => {
       method: "POST",
       body: { kind: "update", text: "A new melody", tagIds },
     });
-    const help = await f.call("/posts", {
+    const neighborUpdate = await f.call("/posts", {
       method: "POST",
       token: "fixture:bob",
       body: {
-        kind: "help",
+        kind: "update",
         text: "Review my song",
-        title: "Feedback",
-        expectedOutcome: "Suggestions",
         tagIds,
       },
     });
@@ -190,7 +188,7 @@ describe("shared homepage tags through local PostgreSQL", () => {
       body: { ...article, tagIds },
     });
     expect(update.status).toBe(201);
-    expect(help.status).toBe(201);
+    expect(neighborUpdate.status).toBe(201);
     expect(work.status).toBe(201);
     await f.call("/works/" + work.data.workId + "/publish", {
       method: "POST",
@@ -203,20 +201,22 @@ describe("shared homepage tags through local PostgreSQL", () => {
     });
     const page = await f.call("/feed?tag=" + tag.id, { token: null });
     expect(page.data.items.map((v: { kind: string }) => v.kind).sort()).toEqual(
-      ["help", "update", "work"],
+      ["update", "update", "work"],
     );
     expect(
-      page.data.items.find((v: { id: string }) => v.id === help.data.id).post
-        .tagIds,
+      page.data.items.find(
+        (v: { id: string }) => v.id === neighborUpdate.data.id,
+      ).post.tagIds,
     ).toEqual(tagIds);
     expect(
-      (await f.call("/posts/" + help.data.id, { token: null })).data.tagIds,
+      (await f.call("/posts/" + neighborUpdate.data.id, { token: null })).data
+        .tagIds,
     ).toEqual(tagIds);
     expect(
       (await f.call("/feed?tag=" + tag.id + "&kind=update")).data.items.map(
         (v: { id: string }) => v.id,
       ),
-    ).toEqual([update.data.id]);
+    ).toEqual([neighborUpdate.data.id, update.data.id]);
     expect(
       (
         await f.call("/feed?tag=" + tag.id + "&kind=work&type=article")
@@ -224,15 +224,13 @@ describe("shared homepage tags through local PostgreSQL", () => {
     ).toEqual([work.data.workId]);
     expect(
       (
-        await f.call("/posts/" + help.data.id, {
+        await f.call("/posts/" + neighborUpdate.data.id, {
           method: "PATCH",
           body: {
-            revision: help.data.revision,
+            revision: neighborUpdate.data.revision,
             content: {
-              kind: "help",
+              kind: "update",
               text: "Forged edit",
-              title: "Feedback",
-              expectedOutcome: "Suggestions",
               tagIds,
             },
           },

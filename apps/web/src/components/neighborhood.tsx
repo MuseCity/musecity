@@ -359,11 +359,6 @@ export function Byline({
     </div>
   );
 }
-export const helpLabel = {
-  open: "Open",
-  in_progress: "In progress",
-  resolved: "Resolved",
-};
 export function PostBody({
   post,
   compact = false,
@@ -373,23 +368,9 @@ export function PostBody({
 }) {
   return (
     <div className="post-body">
-      {post.kind === "help" && (
-        <>
-          <span className={"help-status " + post.helpStatus}>
-            {helpLabel[post.helpStatus!]}
-          </span>
-          <h2>{post.title}</h2>
-        </>
-      )}
       <p className={"post-text " + (compact ? "compact-text" : "")}>
         {post.text}
       </p>
-      {post.expectedOutcome && !compact && (
-        <div className="expected-outcome">
-          <span>Hoping to achieve</span>
-          <p>{post.expectedOutcome}</p>
-        </div>
-      )}
       {post.mediaIds.length > 0 && (
         <div
           className={
@@ -420,11 +401,7 @@ export function CommunityCard({ item }: { item: CommunityItem }) {
       <div className="community-card-head">
         <Byline owner={owner} agent={agent} date={item.createdAt} />
         <span className={"content-badge " + item.kind}>
-          {item.kind === "work"
-            ? "Creation"
-            : item.kind === "help"
-              ? "Help request"
-              : "Update"}
+          {item.kind === "work" ? "Creation" : "Update"}
         </span>
       </div>
       {item.kind === "work" ? (
@@ -433,6 +410,11 @@ export function CommunityCard({ item }: { item: CommunityItem }) {
         <Link state={state} className="post-content-link" to={url}>
           <PostBody post={item.post} compact />
         </Link>
+      )}
+      {item.matchExcerpt && (
+        <p className="match-excerpt">
+          <span>Matched text</span> {item.matchExcerpt}
+        </p>
       )}
       <div className="card-actions">
         <ContentActions

@@ -18,12 +18,10 @@ import {
   type PostView,
 } from "../shared/contracts";
 export function PostEditor({
-  kind = "update",
   existing,
   onSaved,
   onCancel,
 }: {
-  kind?: "update" | "help";
   existing?: PostView;
   onSaved?: (p: PostView) => void;
   onCancel?: () => void;
@@ -38,16 +36,12 @@ export function PostEditor({
       ? {
           kind: existing.kind,
           text: existing.text,
-          title: existing.title,
-          expectedOutcome: existing.expectedOutcome,
           mediaIds: existing.mediaIds,
           tagIds: existing.tagIds,
         }
       : {
-          kind,
+          kind: "update",
           text: "",
-          title: "",
-          expectedOutcome: "",
           mediaIds: [],
           tagIds: topics
             .filter((t) => t.id === params.get("tag"))
@@ -97,46 +91,17 @@ export function PostEditor({
   return (
     <>
       <div className="form-stack">
-        {body.kind === "help" && (
-          <label className="field">
-            What do you need a hand with?
-            <input
-              value={body.title}
-              maxLength={120}
-              onChange={(e) => update({ title: e.target.value })}
-              placeholder="A second pair of eyes on my new app"
-            />
-          </label>
-        )}
         <label className="field">
-          {body.kind === "help"
-            ? "Tell your neighbors more"
-            : "What’s happening?"}
+          What’s happening?
           <textarea
             rows={6}
             maxLength={5000}
             value={body.text}
             onChange={(e) => update({ text: e.target.value })}
-            placeholder={
-              body.kind === "help"
-                ? "Share the context, what you have tried, and where you need help."
-                : "An idea, a small win, something you’re working on…"
-            }
+            placeholder="An idea, a small win, something you’re working on…"
           />
           <span className="field-note">{body.text.length}/5,000</span>
         </label>
-        {body.kind === "help" && (
-          <label className="field">
-            What would a good outcome look like?
-            <textarea
-              rows={2}
-              value={body.expectedOutcome}
-              maxLength={1000}
-              onChange={(e) => update({ expectedOutcome: e.target.value })}
-              placeholder="A few specific suggestions I can put into practice"
-            />
-          </label>
-        )}
         {body.mediaIds.length > 0 && (
           <div className="post-editor-images">
             {body.mediaIds.map((id, i) => (
@@ -202,13 +167,7 @@ export function PostEditor({
           disabled={busy || uploading || !body.text.trim()}
           onClick={() => void save()}
         >
-          {busy
-            ? "Sharing…"
-            : existing
-              ? "Save changes"
-              : body.kind === "help"
-                ? "Ask musecity"
-                : "Share update"}
+          {busy ? "Sharing…" : existing ? "Save changes" : "Share update"}
         </button>
         {onCancel ? (
           <button

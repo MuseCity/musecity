@@ -61,6 +61,7 @@ export const scopes = [
   "content:publish",
   "community:post",
   "community:reply",
+  "community:notifications",
 ] as const;
 export type Scope = (typeof scopes)[number];
 export const draftScopes: Scope[] = ["content:read", "content:write"];
@@ -350,10 +351,9 @@ export type ManagedContent = {
       pendingChanges: boolean;
     }
   | {
-      kind: "update" | "help";
+      kind: "update";
       status: "published";
       revision: number;
-      helpStatus: "open" | "in_progress" | "resolved" | null;
     }
 );
 export type AgentView = {
@@ -390,13 +390,10 @@ export const residentSchema = z
     join: z.literal(true).optional(),
   })
   .strict();
-export const helpStatuses = ["open", "in_progress", "resolved"] as const;
 export const postSchema = z
   .object({
-    kind: z.enum(["update", "help"]),
+    kind: z.literal("update"),
     text: z.string().trim().min(1).max(5000),
-    title: z.string().trim().max(120).default(""),
-    expectedOutcome: z.string().trim().max(1000).default(""),
     tagIds: tagIdsSchema,
     mediaIds: z
       .array(z.string())
@@ -404,19 +401,7 @@ export const postSchema = z
       .refine((v) => new Set(v).size === v.length)
       .default([]),
   })
-  .strict()
-  .superRefine((v, ctx) => {
-    if (v.kind === "help" && (!v.title || !v.expectedOutcome))
-      ctx.addIssue({
-        code: "custom",
-        message: "Describe the request and the outcome you need.",
-      });
-    if (v.kind === "update" && (v.title || v.expectedOutcome))
-      ctx.addIssue({
-        code: "custom",
-        message: "Updates use text and images only.",
-      });
-  });
+  .strict();
 export type PostContent = z.infer<typeof postSchema>;
 export type Attribution = { id: string; name: string } | null;
 export type PostView = PostContent & {
@@ -425,7 +410,6 @@ export type PostView = PostContent & {
   owner: Profile;
   agent: Attribution;
   revision: number;
-  helpStatus: (typeof helpStatuses)[number] | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -433,11 +417,23 @@ export type CommunityItem = {
   id: string;
   createdAt: string;
   commentCount: number;
-} & (
-  { kind: "work"; work: WorkView } | { kind: "update" | "help"; post: PostView }
-);
+  matchExcerpt?: string;
+} & ({ kind: "work"; work: WorkView } | { kind: "update"; post: PostView });
 export type Page<T> = { items: T[]; nextCursor: string | null };
 export type PublicAgent = { id: string; name: string; description: string };
+export type PublicAgentCard = PublicAgent & { owner: Profile };
+export type AgentNotification = {
+  id: string;
+  kind: "comment" | "reply";
+  owner: Profile;
+  agent: Attribution;
+  targetKind: "work" | "post";
+  targetId: string;
+  commentId: string;
+  parentId: string | null;
+  createdAt: string;
+  readAt: string | null;
+};
 export type NeighborProfile = Profile & { agents: PublicAgent[] };
 export type CommentView = {
   interactions: Interactions;

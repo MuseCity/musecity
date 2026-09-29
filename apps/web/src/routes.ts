@@ -1,6 +1,15 @@
 import { index, route, type RouteConfig } from "@react-router/dev/routes";
+import { siteBuilders } from "./shared/site-builders";
 export default [
   index("routes/feed.tsx"),
+  ...siteBuilders.flatMap((builder) => [
+    route(builder.path.slice(1), "routes/site-gallery.tsx", {
+      id: "sites-" + builder.id,
+    }),
+    route(builder.guidePath.slice(1), "routes/site-guide.tsx", {
+      id: "site-guide-" + builder.id,
+    }),
+  ]),
   route("move-in", "routes/move-in.tsx"),
   route("neighbors", "routes/neighbors.tsx"),
   route("wallet", "routes/wallet.tsx"),

@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { siteBuilders } from "../src/shared/site-builders";
 import {
   contentHref,
   contentKind,
@@ -8,6 +9,46 @@ import {
   shareHref,
 } from "../src/shared/content-navigation";
 describe("content navigation", () => {
+  it("retains the literal search query all while clearing category sentinels and stale cursors", () => {
+    expect(contentHref("/", "?tag=design&cursor=old", "q", "all")).toBe(
+      "/?tag=design&q=all",
+    );
+    expect(contentHref("/", "?q=all&kind=work&cursor=old", "kind", "all")).toBe(
+      "/?q=all",
+    );
+    expect(contentHref("/", "?q=all&tag=design&cursor=old", "q", "")).toBe(
+      "/?tag=design",
+    );
+    expect(publicContentParams("?q=all&kind=update").get("q")).toBe("all");
+  });
+  it("returns to builder galleries and guides without allowing arbitrary return URLs", () => {
+    for (const builder of siteBuilders) {
+      for (const path of [builder.path, builder.guidePath])
+        expect(
+          validOrigin({
+            path: path + "?cursor=next",
+            label: "Untrusted",
+            key: "source",
+            index: 3,
+          }),
+        ).toEqual({
+          path: path + "?cursor=next",
+          label: builder.name,
+          key: "source",
+          index: 3,
+        });
+      expect(validOrigin({ path: builder.path + ".evil.example" })).toBeNull();
+      expect(
+        validOrigin({ path: "/\\evil.example" + builder.path }),
+      ).toBeNull();
+    }
+    expect(
+      contentHref("/", "?view=sites&builder=codex&cursor=old", "tab", "latest"),
+    ).toBe("/");
+    expect(
+      publicContentParams("?view=sites&builder=codex", "alice").has("builder"),
+    ).toBe(false);
+  });
   it("preserves following when selecting formats, and clears retired filters and cursors", () => {
     const source = "?view=following&ecosystem=base&cursor=old";
     const website = contentHref("/", source, "type", "website");
@@ -28,7 +69,7 @@ describe("content navigation", () => {
     ).toBe("/me/content?kind=work&type=article&status=draft");
     const updates = contentHref(
       "/",
-      "?" + params + "&status=draft&help=open&cursor=old",
+      "?" + params + "&status=draft&cursor=old",
       "kind",
       "update",
     );
@@ -81,12 +122,12 @@ describe("content navigation", () => {
     );
     expect(
       validOrigin({
-        path: "/?ecosystem=base&cursor=old&kind=help",
+        path: "/?ecosystem=base&cursor=old&kind=update",
         index: 2,
         key: "old",
       }),
     ).toEqual({
-      path: "/?kind=help",
+      path: "/?kind=update",
       label: "Square",
       index: undefined,
       key: undefined,
@@ -98,11 +139,11 @@ describe("content navigation", () => {
       expect(publicContentParams(search).get("kind")).toBe("work");
     }
     const profile = publicContentParams(
-      "?kind=help&owner=someone&status=draft&view=following",
+      "?kind=update&owner=someone&status=draft&view=following",
       "alice",
     );
     expect(Object.fromEntries(profile)).toEqual({
-      kind: "help",
+      kind: "update",
       owner: "alice",
     });
     expect(validOrigin({ path: "//evil.example/" })).toBeNull();
@@ -140,13 +181,13 @@ describe("content navigation", () => {
       contentHref("/", "?tag=design&view=following", "tab", "latest"),
     ).toBe("/");
     expect(shareHref("work", "design")).toBe("/publish?tag=design");
-    expect(shareHref("help", "design")).toBe("/share?kind=help&tag=design");
+    expect(shareHref("update", "design")).toBe("/share?tag=design");
   });
   it("opens Sites without stale filters and returns to unrestricted main tabs", () => {
     expect(
       contentHref(
         "/",
-        "?tag=design&view=following&kind=help&help=open&cursor=old",
+        "?tag=design&view=following&kind=update&cursor=old",
         "tab",
         "sites",
       ),

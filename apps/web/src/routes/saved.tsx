@@ -61,8 +61,8 @@ function SavedContent() {
         ) : (
           <Empty title="Keep something worth returning to.">
             <p>
-              Use Save on a creation, update, help request or reply. Only you
-              can see this collection.
+              Use Save on a creation, update or reply. Only you can see this
+              collection.
             </p>
             <Link className="text-link inline-block mt-4" to="/">
               Explore the Square →

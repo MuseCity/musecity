@@ -107,8 +107,8 @@ await withDatabase(config.e2eAdminUrl, (db) =>
       [prefix, me.id],
     );
     await db.query(
-      `INSERT INTO musecity.posts(id,owner_account_id,kind,text,title,expected_outcome,help_status) VALUES($1,$2,'help','SEO help body','SEO help title','SEO desired result','open')`,
-      [prefix + "-help", me.id],
+      `INSERT INTO musecity.posts(id,owner_account_id,kind,text) VALUES($1,$2,'update','SEO neighbor update')`,
+      [prefix + "-neighbor-update", me.id],
     );
     await db.query(
       `INSERT INTO musecity.posts(id,owner_account_id,kind,text) VALUES($1,$2,'update','SEO update body')`,
@@ -165,7 +165,7 @@ for (const [path, name] of [
   ["/?view=sites", "AI-built websites"],
   ["/?tag=" + tag, "SEO verification"],
   ["/u/" + me.handle, me.name],
-  ["/posts/" + prefix + "-help", "SEO help title"],
+  ["/posts/" + prefix + "-neighbor-update", "SEO neighbor update"],
   ["/posts/" + prefix + "-update", "SEO update body"],
   ["/governance", "Governance"],
   ["/governance/" + prefix + "-proposal", "SEO proposal"],

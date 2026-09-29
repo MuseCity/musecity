@@ -8,11 +8,9 @@ import {
 } from "../src/shared/contracts";
 beforeEach(reset);
 const update = { kind: "update", text: "Hello, neighbors!" };
-const help = {
-  kind: "help",
+const gardenUpdate = {
+  kind: "update",
   text: "I am building an open source garden.",
-  title: "Looking for a design review",
-  expectedOutcome: "Three actionable suggestions",
 };
 async function join(f: ReturnType<typeof fixture>, who = "alice") {
   const r = await f.call("/me", {
@@ -524,11 +522,13 @@ describe("neighborhood workflows through the real local PostgreSQL API", () => {
     ])
       expect((await f.call(path, { token: ag.token })).status).toBe(403);
   });
-  it("supports requests, replies on both content types, safe text, optimistic edits and owner-only resolution", async () => {
+  it("supports update replies on both content types, safe text and optimistic edits", async () => {
     const f = fixture();
     await join(f);
     await join(f, "bob");
-    const post = (await f.call("/posts", { method: "POST", body: help })).data;
+    const post = (
+      await f.call("/posts", { method: "POST", body: gardenUpdate })
+    ).data;
     const reply = await f.call("/posts/" + post.id + "/comments", {
       token: "fixture:bob",
       method: "POST",
@@ -549,38 +549,23 @@ describe("neighborhood workflows through the real local PostgreSQL API", () => {
     ).toBe("reply");
     expect(
       (
-        await f.call("/posts/" + post.id + "/status", {
-          token: "fixture:bob",
+        await f.call("/posts/" + post.id, {
           method: "PATCH",
-          body: { revision: 1, status: "resolved" },
+          body: {
+            revision: 1,
+            content: { ...gardenUpdate, text: "Public revised update" },
+          },
         })
       ).status,
-    ).toBe(404);
-    expect(
-      (
-        await f.call("/posts/" + post.id + "/status", {
-          method: "PATCH",
-          body: { revision: 1, status: "in_progress" },
-        })
-      ).data.helpStatus,
-    ).toBe("in_progress");
+    ).toBe(200);
     expect(
       (
         await f.call("/posts/" + post.id, {
           method: "PATCH",
-          body: { revision: 1, content: help },
+          body: { revision: 1, content: gardenUpdate },
         })
       ).status,
     ).toBe(409);
-    expect(
-      (
-        await f.call("/posts/" + post.id + "/status", {
-          method: "PATCH",
-          body: { revision: 2, status: "resolved" },
-        })
-      ).data.helpStatus,
-    ).toBe("resolved");
-    expect((await f.call("/feed?help=open")).data.items).toEqual([]);
     const work = await publishedWork(f);
     expect(
       (
@@ -644,21 +629,15 @@ describe("neighborhood workflows through the real local PostgreSQL API", () => {
         })
       ).status,
     ).toBe(404);
-    for (const path of [
-      "/posts/" + post.data.id,
-      "/posts/" + post.data.id + "/status",
-    ])
-      expect(
-        (
-          await f.call(path, {
-            token: ag.token,
-            method: path.endsWith("status") ? "PATCH" : "DELETE",
-            body: path.endsWith("status")
-              ? { revision: 1, status: "resolved" }
-              : { revision: 1 },
-          })
-        ).status,
-      ).toBe(403);
+    expect(
+      (
+        await f.call("/posts/" + post.data.id, {
+          token: ag.token,
+          method: "DELETE",
+          body: { revision: 1 },
+        })
+      ).status,
+    ).toBe(403);
     await f.call("/me/agents/" + ag.id + "/pause", {
       method: "POST",
       body: { confirmed: true },
@@ -913,7 +892,7 @@ describe("neighborhood workflows through the real local PostgreSQL API", () => {
           await f.call("/posts", {
             token: i % 2 ? "fixture:bob" : "fixture:alice",
             method: "POST",
-            body: i % 3 ? update : help,
+            body: i % 3 ? update : gardenUpdate,
           })
         ).status,
       ).toBe(201);
@@ -1007,7 +986,9 @@ describe("neighborhood workflows through the real local PostgreSQL API", () => {
     const f = fixture();
     const alice = await join(f);
     await join(f, "bob");
-    const post = (await f.call("/posts", { method: "POST", body: help })).data;
+    const post = (
+      await f.call("/posts", { method: "POST", body: gardenUpdate })
+    ).data;
     const c = await f.call("/posts/" + post.id + "/comments", {
       token: "fixture:bob",
       method: "POST",
@@ -1053,7 +1034,7 @@ describe("neighborhood workflows through the real local PostgreSQL API", () => {
       (
         await f.call("/posts/" + post.id, {
           method: "PATCH",
-          body: { revision: 1, content: help },
+          body: { revision: 1, content: gardenUpdate },
         })
       ).status,
     ).toBe(423);
@@ -1256,21 +1237,24 @@ describe("unified private content management", () => {
     const updatePost = (
       await f.call("/posts", { method: "POST", body: update })
     ).data;
-    const helpPost = (
-      await f.call("/posts", { token: ag.token, method: "POST", body: help })
+    const agentPost = (
+      await f.call("/posts", {
+        token: ag.token,
+        method: "POST",
+        body: gardenUpdate,
+      })
     ).data;
     const list = await f.call("/me/content");
     expect(list.status).toBe(200);
     expect(list.response.headers.get("cache-control")).toContain("no-store");
     expect(list.data.items.map((i: any) => i.id)).toEqual([
-      helpPost.id,
+      agentPost.id,
       updatePost.id,
       work.workId,
     ]);
     expect(list.data.items[0]).toMatchObject({
-      kind: "help",
+      kind: "update",
       agent: { id: ag.id },
-      helpStatus: "open",
       restricted: false,
     });
     expect(list.data.items[1]).toMatchObject({ kind: "update", agent: null });
@@ -1316,22 +1300,6 @@ describe("unified private content management", () => {
     expect(
       (await f.call(`/posts/${updatePost.id}`, { token: null })).data.text,
     ).toBe("Public update edited");
-    for (const status of ["in_progress", "resolved"]) {
-      const current = (await f.call(`/posts/${helpPost.id}`)).data;
-      expect(
-        (
-          await f.call(`/posts/${helpPost.id}/status`, {
-            method: "PATCH",
-            body: { revision: current.revision, status },
-          })
-        ).status,
-      ).toBe(200);
-      expect(
-        (await f.call(`/me/content?kind=help&help=${status}`)).data.items.map(
-          (i: any) => i.id,
-        ),
-      ).toEqual([helpPost.id]);
-    }
     expect(
       (
         await f.call(`/works/${work.workId}/unpublish`, {
@@ -1350,7 +1318,7 @@ describe("unified private content management", () => {
     for (const path of [
       `/works/${work.workId}`,
       `/posts/${updatePost.id}`,
-      `/posts/${helpPost.id}`,
+      `/posts/${agentPost.id}`,
     ]) {
       const current = path.includes("posts") ? (await f.call(path)).data : null;
       expect(
@@ -1378,7 +1346,7 @@ describe("unified private content management", () => {
             })
           : await f.call("/posts", {
               method: "POST",
-              body: i % 3 ? update : help,
+              body: i % 3 ? update : gardenUpdate,
             });
       expect(result.status, JSON.stringify(result.data)).toBe(201);
       expected.push(result.data.workId ?? result.data.id);
@@ -1420,8 +1388,8 @@ describe("unified private content management", () => {
       (await f.call("/me/content?kind=work&status=draft")).data.items,
     ).toHaveLength(13);
     expect(
-      (await f.call("/me/content?kind=help&help=open")).data.items.every(
-        (i: any) => i.kind === "help" && i.helpStatus === "open",
+      (await f.call("/me/content?kind=update")).data.items.every(
+        (i: any) => i.kind === "update",
       ),
     ).toBe(true);
     for (const filter of [
@@ -1442,7 +1410,9 @@ describe("unified private content management", () => {
   it("keeps moderation restrictions visible privately and prevents publishing or editing around them", async () => {
     const f = fixture(),
       work = await publishedWork(f);
-    const post = (await f.call("/posts", { method: "POST", body: help })).data;
+    const post = (
+      await f.call("/posts", { method: "POST", body: gardenUpdate })
+    ).data;
     await withDatabase(config.testAdminUrl, async (db) => {
       await db.query("UPDATE musecity.works SET blocked=true WHERE id=$1", [
         work.workId,
@@ -1478,15 +1448,7 @@ describe("unified private content management", () => {
       (
         await f.call(`/posts/${post.id}`, {
           method: "PATCH",
-          body: { revision: post.revision, content: help },
-        })
-      ).status,
-    ).toBe(423);
-    expect(
-      (
-        await f.call(`/posts/${post.id}/status`, {
-          method: "PATCH",
-          body: { revision: post.revision, status: "resolved" },
+          body: { revision: post.revision, content: gardenUpdate },
         })
       ).status,
     ).toBe(423);

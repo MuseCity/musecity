@@ -8,6 +8,8 @@ import {
   CreationFormats,
 } from "../components/content-navigation";
 import { FeedTabs } from "../components/feed-tabs";
+import { SiteBuilderLinks } from "../components/site-builder-links";
+import { ContentSearch } from "../components/content-search";
 import { useTopics } from "../components/catalog";
 import {
   contentKind,
@@ -22,7 +24,7 @@ import {
   useLocation,
   type LoaderFunctionArgs,
 } from "react-router";
-import { ArrowUpRight, Handshake, UsersRound } from "lucide-react";
+import { ArrowUpRight, MessageCircle, UsersRound } from "lucide-react";
 import { servicesContext } from "../context";
 import { useAuth } from "../components/auth";
 import {
@@ -41,7 +43,7 @@ export async function loader(args: LoaderFunctionArgs) {
   const cleaned = retiredEcosystemPath(url);
   if (cleaned) throw replace(cleaned);
   const { origin } = context.get(servicesContext);
-  const [page, neighbors, requests] = await Promise.all([
+  const [page, neighbors, discovery] = await Promise.all([
     url.searchParams.get("view") === "following"
       ? null
       : publicRead<Page<CommunityItem>>(
@@ -49,7 +51,7 @@ export async function loader(args: LoaderFunctionArgs) {
           "/feed?" + publicContentParams(url.search),
         ),
     publicRead<Page<Profile>>(args, "/neighbors").catch(() => null),
-    publicRead<Page<CommunityItem>>(args, "/feed?kind=help&help=open").catch(
+    publicRead<{ items: CommunityItem[] }>(args, "/discovery").catch(
       () => null,
     ),
   ]);
@@ -67,12 +69,12 @@ export async function loader(args: LoaderFunctionArgs) {
   const description = sites
     ? "Discover AI-assisted websites shared by creators and their agents on musecity."
     : tag
-      ? `Explore creations, updates and help requests about ${tag.name} from the musecity community.`
+      ? `Explore creations and updates about ${tag.name} from the musecity community.`
       : "Discover websites and creative work, share updates, and build together with people and their Muse AI.";
   return {
     page,
     neighbors,
-    requests,
+    discovery,
     seo: collectionSeo(
       origin,
       url,
@@ -103,9 +105,9 @@ function Square() {
     "/neighbors",
     initial.neighbors ?? undefined,
   );
-  const requests = useNeighborhoodPage<CommunityItem>(
-    "/feed?kind=help&help=open",
-    initial.requests ?? undefined,
+  const discovery = useNeighborhoodData<{ items: CommunityItem[] }>(
+    "/discovery",
+    initial.discovery ?? undefined,
   );
   const onboarding = useNeighborhoodData<OnboardingState>(
     "/me/onboarding",
@@ -175,7 +177,11 @@ function Square() {
             </div>
           ) : null}
           {!sites && <ContentKinds />}
+          {sites && <SiteBuilderLinks />}
           {!sites && kind === "work" && <CreationFormats />}
+          <ContentSearch
+            placeholder={sites ? "Search AI-built websites…" : undefined}
+          />
           {view === "following" && auth.ready && !auth.userId ? (
             <Empty title="Keep your neighbors close.">
               <p>
@@ -204,21 +210,25 @@ function Square() {
                 ) : (
                   <Empty
                     title={
-                      view === "following"
-                        ? "musecity starts with a hello."
-                        : sites
-                          ? "Share your first AI-built website."
-                          : tag
-                            ? `Start a conversation in ${tag.name}.`
-                            : "The square is yours to start."
+                      params.get("q")
+                        ? "No matching content here."
+                        : view === "following"
+                          ? "musecity starts with a hello."
+                          : sites
+                            ? "Share your first AI-built website."
+                            : tag
+                              ? `Start a conversation in ${tag.name}.`
+                              : "The square is yours to start."
                     }
                   >
                     <p>
-                      {view === "following"
-                        ? "Find a few neighbors to follow. Their creations, updates, and help requests will appear here."
-                        : sites
-                          ? "Add a link, a cover, and a few words about what you made."
-                          : "Share an idea, show something you made, or ask your neighbors for a hand."}
+                      {params.get("q")
+                        ? "Try another search or clear it to see all content in these filters."
+                        : view === "following"
+                          ? "Find a few neighbors to follow. Their creations and updates will appear here."
+                          : sites
+                            ? "Add a link, a cover, and a few words about what you made."
+                            : "Share an idea or show something you made."}
                     </p>
                     <Link
                       className="text-link inline-block mt-4"
@@ -235,9 +245,7 @@ function Square() {
                           ? "Share a site →"
                           : kind === "work"
                             ? "Share a creation →"
-                            : kind === "help"
-                              ? "Ask for help →"
-                              : "Share an update →"}
+                            : "Share an update →"}
                     </Link>
                   </Empty>
                 ))}
@@ -285,40 +293,46 @@ function Square() {
               Meet everyone →
             </Link>
           </section>
-          <section className="sidebar-section sidebar-help">
+          <section className="sidebar-section sidebar-discussions">
             <div className="sidebar-heading">
-              <Handshake size={17} />
-              <h2>A little help?</h2>
+              <MessageCircle size={17} />
+              <h2>Active conversations</h2>
             </div>
             <QueryState
-              busy={requests.busy}
-              error={requests.error}
-              retry={requests.reload}
+              busy={discovery.busy}
+              error={discovery.error}
+              retry={discovery.reload}
             />
-            {requests.data?.items.slice(0, 3).map(
-              (item) =>
-                item.kind !== "work" && (
-                  <Link
-                    className="mini-request"
-                    state={state}
-                    to={"/posts/" + item.id}
-                    key={item.id}
-                  >
-                    <strong>{item.post.title}</strong>
-                    <span>Asked by {item.post.owner.name}</span>
-                  </Link>
-                ),
-            )}
-            {!requests.busy &&
-              !requests.error &&
-              !requests.data?.items.length && (
+            {discovery.data?.items.slice(0, 5).map((item) => (
+              <Link
+                className="mini-discussion"
+                state={state}
+                to={
+                  (item.kind === "work" ? "/works/" : "/posts/") +
+                  item.id +
+                  "#conversation"
+                }
+                key={item.id}
+              >
+                <strong>
+                  {item.kind === "work" ? item.work.body.title : item.post.text}
+                </strong>
+                <span>
+                  {item.commentCount}{" "}
+                  {item.commentCount === 1 ? "reply" : "replies"} ·{" "}
+                  {item.kind === "work"
+                    ? item.work.owner.name
+                    : item.post.owner.name}
+                </span>
+              </Link>
+            ))}
+            {!discovery.busy &&
+              !discovery.error &&
+              !discovery.data?.items.length && (
                 <p className="text-muted text-sm">
-                  No open requests yet. Your next idea might need a neighbor.
+                  Conversations with recent replies will appear here.
                 </p>
               )}
-            <Link state={state} to="/share?kind=help" className="sidebar-more">
-              Ask for a hand →
-            </Link>
           </section>
           <Link className="sidebar-agent-link" to="/me/agents">
             Bring your agents along <ArrowUpRight size={15} />

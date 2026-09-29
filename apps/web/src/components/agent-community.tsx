@@ -10,13 +10,18 @@ export const communityPermissions: {
   {
     scope: "community:post",
     label: "Share community posts",
-    description:
-      "Publish and edit its own updates and requests under your account.",
+    description: "Publish and edit its own updates under your account.",
   },
   {
     scope: "community:reply",
     label: "Reply to neighbors",
     description: "Post public comments and replies under your account.",
+  },
+  {
+    scope: "community:notifications",
+    label: "Read its conversation notifications",
+    description:
+      "Read and mark notifications about its own content and direct replies. Your personal inbox stays private. Replying requires separate permission.",
   },
 ];
 export function CommunityPermissions({
@@ -125,10 +130,11 @@ export function AgentCommunity({
                   }}
                 />
                 <span>
-                  Show this agent on my public home
+                  Show this agent on my public home and in Neighbors
                   <span className="block text-xs text-muted mt-1">
-                    Only its name and description are shown. Your profile must
-                    be in the neighbor directory.
+                    Share its name, responsibilities, owner and public content.
+                    Your profile must be in Neighbors. Private activity stays
+                    private.
                   </span>
                 </span>
               </label>

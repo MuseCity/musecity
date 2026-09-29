@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { article, config, fixture, reset } from "./helpers";
 import { withDatabase } from "../src/server/database";
+import { RouterContextProvider } from "react-router";
+import { servicesContext } from "../src/context";
+import { loader as galleryLoader } from "../src/routes/site-gallery";
+import { siteBuilders } from "../src/shared/site-builders";
 
 beforeEach(reset);
 
@@ -68,6 +72,189 @@ async function publish(
 }
 
 describe("Sites through the real local PostgreSQL API", () => {
+  it("classifies published source declarations, with matching SSR and sitemap lifecycle", async () => {
+    const f = fixture(),
+      image = await cover(f);
+    const sitemap = async () =>
+      (await f.app.request("http://localhost/sitemap.xml")).text();
+    const context = new RouterContextProvider();
+    context.set(servicesContext, {
+      appId: "",
+      origin: "http://localhost",
+      api: f.app,
+    });
+    const gallery = (path: string) =>
+      galleryLoader({
+        request: new Request("http://localhost" + path + ".data?_routes=route"),
+        url: new URL(path, "http://localhost"),
+        pattern: path,
+        params: {},
+        context,
+      });
+    const feed = async (id: string) =>
+      (await f.call("/feed?view=sites&builder=" + id, { token: null })).data
+        .items;
+    for (const builder of siteBuilders) {
+      expect(await sitemap()).toContain(
+        "<loc>http://localhost" + builder.guidePath + "</loc>",
+      );
+      expect(await sitemap()).not.toContain(
+        "<loc>http://localhost" + builder.path + "</loc>",
+      );
+      expect((await gallery(builder.path)).seo.noindex).toBe(true);
+    }
+    const codex = await publish(f, {
+      ...website(image, true),
+      aiTools: [" CODEX SITES "],
+    });
+    const currentCodex = await publish(f, {
+      ...website(image, true),
+      aiTools: ["chatgpt sites"],
+    });
+    const claude = await publish(f, {
+      ...website(image, true),
+      aiTools: ["cLaUdE ArTiFaCtS"],
+    });
+    const muse = await publish(f, {
+      ...website(image, true),
+      aiTools: ["Meta Muse", "Muse Artifacts"],
+    });
+    await publish(f, {
+      ...website(image, true),
+      aiTools: [
+        "Codex",
+        "Claude",
+        "Claude Code",
+        "Muse",
+        "Not Claude Artifacts",
+      ],
+    });
+    await publish(f, { ...website(image, false), aiTools: ["ChatGPT Sites"] });
+    await publish(f, {
+      ...article,
+      aiDeclaration: true,
+      aiTools: ["ChatGPT Sites"],
+    });
+    const draft = await f.call("/works", {
+      method: "POST",
+      body: {
+        ...website(image, true),
+        title: "PRIVATE SOURCE DRAFT",
+        aiTools: ["Claude Artifacts"],
+      },
+    });
+    expect(draft.status).toBe(201);
+    expect(
+      (await feed("codex")).map((item: { id: string }) => item.id).sort(),
+    ).toEqual([codex.workId, currentCodex.workId].sort());
+    expect(
+      (await feed("claude")).map((item: { id: string }) => item.id),
+    ).toEqual([claude.workId]);
+    expect((await feed("muse")).map((item: { id: string }) => item.id)).toEqual(
+      [muse.workId],
+    );
+    for (const builder of siteBuilders) {
+      const result = await gallery(builder.path);
+      expect(result.seo.noindex).toBe(false);
+      expect(result.seo.canonical).toBe("http://localhost" + builder.path);
+      expect(JSON.stringify(result)).not.toContain("PRIVATE SOURCE DRAFT");
+      expect(await sitemap()).toContain(
+        "<loc>http://localhost" + builder.path + "</loc>",
+      );
+    }
+    const edit = await f.call("/works/" + claude.workId, {
+      method: "PATCH",
+      body: {
+        baseRevisionId: claude.revisionId,
+        content: {
+          ...website(image, true),
+          title: "PRIVATE RECLASSIFICATION",
+          aiTools: ["Meta Muse"],
+        },
+      },
+    });
+    expect(edit.status).toBe(200);
+    expect(await feed("claude")).toHaveLength(1);
+    expect(await feed("muse")).toHaveLength(1);
+    expect(JSON.stringify(await gallery("/claude-artifacts"))).not.toContain(
+      "PRIVATE RECLASSIFICATION",
+    );
+    expect(
+      (
+        await f.call("/works/" + claude.workId + "/publish", {
+          method: "POST",
+          body: { revisionId: edit.data.revisionId },
+        })
+      ).status,
+    ).toBe(200);
+    expect(await feed("claude")).toHaveLength(0);
+    expect(await feed("muse")).toHaveLength(2);
+    expect((await gallery("/claude-artifacts")).seo.noindex).toBe(true);
+    expect(await sitemap()).not.toContain(
+      "<loc>http://localhost/claude-artifacts</loc>",
+    );
+    expect(
+      (
+        await f.call("/works/" + claude.workId + "/unpublish", {
+          method: "POST",
+          body: { revisionId: edit.data.revisionId },
+        })
+      ).status,
+    ).toBe(200);
+    await withDatabase(config.testAdminUrl, (db) =>
+      db.query("UPDATE musecity.works SET blocked=true WHERE id=$1", [
+        muse.workId,
+      ]),
+    );
+    expect(await feed("muse")).toHaveLength(0);
+    expect(await sitemap()).not.toContain(
+      "<loc>http://localhost/muse-artifacts</loc>",
+    );
+    await withDatabase(config.testAdminUrl, (db) =>
+      db.query("UPDATE musecity.accounts SET status='restricted' WHERE id=$1", [
+        codex.owner.id,
+      ]),
+    );
+    expect(await feed("codex")).toHaveLength(0);
+    expect(await sitemap()).not.toContain(
+      "<loc>http://localhost/codex-sites</loc>",
+    );
+  });
+
+  it("rejects invalid builder filters and unsupported gallery combinations", async () => {
+    const f = fixture();
+    for (const query of [
+      "builder=codex",
+      "view=following&builder=codex",
+      "view=sites&builder=unknown",
+      "view=sites&builder=",
+      "view=sites&builder=claude&kind=help",
+    ]) {
+      const result = await f.call("/feed?" + query, { token: null });
+      expect(result.status).toBe(400);
+      expect(result.data.error.code).toBe("INVALID_FILTER");
+    }
+    const context = new RouterContextProvider();
+    context.set(servicesContext, {
+      appId: "",
+      origin: "http://localhost",
+      api: f.app,
+    });
+    for (const [path, status] of [
+      ["/codex-sites?cursor=bad", 400],
+      ["/codex-sites?tag=design", 400],
+      ["/unknown-sites", 404],
+    ] as const)
+      await expect(
+        galleryLoader({
+          request: new Request("http://localhost" + path),
+          url: new URL(path, "http://localhost"),
+          pattern: path,
+          params: {},
+          context,
+        }),
+      ).rejects.toMatchObject({ status });
+  });
   it("collects declared AI websites from different owners and excludes other content", async () => {
     const f = fixture(),
       aliceCover = await cover(f),
@@ -248,7 +435,11 @@ describe("Sites through the real local PostgreSQL API", () => {
     for (let i = 0; i < 21; i++)
       await publish(
         f,
-        { ...website(covers[i % 2]!, true), title: "Site " + i },
+        {
+          ...website(covers[i % 2]!, true),
+          title: "Site " + i,
+          aiTools: ["Codex Sites"],
+        },
         i % 2 ? "fixture:bob" : "fixture:alice",
       );
     const first = await f.call("/feed?view=sites", { token: null });
@@ -273,5 +464,36 @@ describe("Sites through the real local PostgreSQL API", () => {
         (await f.call("/feed?" + query + "cursor=" + cursor, { token: null }))
           .data.error.code,
       ).toBe("INVALID_CURSOR");
+    const source = await f.call("/feed?view=sites&builder=codex", {
+      token: null,
+    });
+    expect(source.data.items).toHaveLength(20);
+    const sourceCursor = encodeURIComponent(source.data.nextCursor);
+    expect(
+      (
+        await f.call("/feed?view=sites&builder=codex&cursor=" + sourceCursor, {
+          token: null,
+        })
+      ).data.items,
+    ).toHaveLength(1);
+    for (const query of [
+      "view=sites",
+      "view=sites&builder=claude",
+      "view=sites&builder=codex&tag=design",
+    ])
+      expect(
+        (
+          await f.call("/feed?" + query + "&cursor=" + sourceCursor, {
+            token: null,
+          })
+        ).data.error.code,
+      ).toBe("INVALID_CURSOR");
+    expect(
+      (
+        await f.call("/feed?view=sites&builder=codex&cursor=" + sourceCursor, {
+          token: "fixture:alice",
+        })
+      ).data.error.code,
+    ).toBe("INVALID_CURSOR");
   });
 });

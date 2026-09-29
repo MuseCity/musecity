@@ -969,22 +969,10 @@
   .community-card .post-body {
     padding: 10px 0;
   }
-  .community-card .post-body h2 {
-    font-size: 17px;
-    margin-bottom: 6px;
-  }
   .community-card .post-text {
     font-size: 14px;
     line-height: 1.6;
     -webkit-line-clamp: 4;
-  }
-  .post-body h2 {
-    margin: 0 0 10px;
-    font-size: 21px;
-    font-weight: 750;
-    line-height: 1.4;
-    letter-spacing: -0.035em;
-    overflow-wrap: anywhere;
   }
   .post-text {
     white-space: pre-wrap;
@@ -997,45 +985,6 @@
     -webkit-line-clamp: 5;
     -webkit-box-orient: vertical;
     overflow: hidden;
-  }
-  .help-status {
-    display: inline-flex;
-    padding: 5px 10px;
-    border-radius: 20px;
-    color: var(--color-leaf);
-    background: var(--color-mint);
-    font-size: 12px;
-    font-weight: 650;
-    margin-bottom: 10px;
-  }
-  .help-status.in_progress {
-    background: var(--color-sky);
-    color: var(--color-brand);
-  }
-  .help-status.resolved {
-    background: var(--color-mint);
-    color: var(--color-leaf);
-  }
-  .expected-outcome {
-    border-left: 3px solid #e6cd9f;
-    padding: 8px 12px;
-    background: var(--color-canvas);
-    border-radius: 0 7px 7px 0;
-    margin-top: 16px;
-  }
-  .expected-outcome span {
-    font-size: 10px;
-    color: #7a6561;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-  .expected-outcome p {
-    margin-top: 4px;
-    font-size: 13px;
-    line-height: 1.7;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
   }
   .card-actions {
     display: flex;
@@ -1110,17 +1059,20 @@
     font-weight: 600;
     margin-top: 10px;
   }
-  .mini-request {
+  .mini-discussion {
     display: block;
     padding: 10px 0;
   }
-  .mini-request strong {
-    display: block;
+  .mini-discussion strong {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
     font-size: 12px;
     line-height: 1.65;
     overflow-wrap: anywhere;
   }
-  .mini-request span {
+  .mini-discussion span {
     display: block;
     font-size: 10px;
     color: var(--color-muted);
@@ -1160,14 +1112,6 @@
     gap: 4px;
     white-space: nowrap;
     font-size: 12px;
-  }
-  .neighbor-search {
-    display: flex;
-    gap: 12px;
-    margin-bottom: 30px;
-  }
-  .neighbor-search .field {
-    flex: 1;
   }
   .neighbor-grid {
     display: grid;
@@ -1355,7 +1299,7 @@
   }
   .share-options {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
     margin-bottom: 28px;
   }
@@ -1436,18 +1380,6 @@
     border-top: 1px solid var(--color-line);
     padding-top: 18px;
     font-size: 12px;
-  }
-  .status-select {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--color-muted);
-    font-size: 12px;
-  }
-  .status-select select {
-    padding: 6px 10px;
-    font-size: 12px;
-    width: auto;
   }
   .report-button {
     display: inline-flex;
@@ -1533,13 +1465,13 @@
   }
 }
 @layer components {
-  .sidebar-help {
+  .sidebar-discussions {
     padding: 16px;
     border: 1px solid #eadccc;
     border-radius: 12px;
     background: var(--color-sky);
   }
-  .sidebar-help .sidebar-heading {
+  .sidebar-discussions .sidebar-heading {
     margin-bottom: 12px;
   }
   .mini-neighbor-note {
@@ -1574,10 +1506,6 @@
     background: var(--color-sky);
     white-space: nowrap;
   }
-  .content-badge.help {
-    color: var(--color-leaf);
-    background: var(--color-mint);
-  }
   .community-card .work-row:has(.thumb-link) {
     grid-template-columns: minmax(0, 1fr) 160px;
     align-items: center;
@@ -1595,8 +1523,7 @@
     letter-spacing: -0.035em;
     line-height: 1.4;
   }
-  .community-card .work-title > a,
-  .community-card .post-body h2 {
+  .community-card .work-title > a {
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -1612,12 +1539,6 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
     margin-top: 5px;
-  }
-  .community-card .help-status {
-    float: right;
-    margin: 0 0 0 8px;
-    padding: 3px 8px;
-    font-size: 11px;
   }
   .community-card .post-images {
     grid-template-columns: none;
@@ -1776,6 +1697,9 @@
   .neighborhood-sidebar {
     width: 100%;
   }
+  .sidebar-discussions {
+    order: -1;
+  }
   .neighborhood-sidebar {
     padding-top: 28px;
     border-top: 1px solid #eadccc;
@@ -1801,21 +1725,8 @@
   .byline-date {
     font-size: 11px;
   }
-  .post-body h2 {
-    font-size: 17px;
-  }
   .post-text {
     font-size: 14px;
-  }
-  .neighbor-search {
-    flex-wrap: wrap;
-    gap: 9px;
-  }
-  .neighbor-search .field {
-    flex-basis: 100%;
-  }
-  .neighbor-search > label:not(.field) {
-    flex: 1;
   }
   .neighbor-grid {
     grid-template-columns: 1fr;
@@ -2099,11 +2010,6 @@
   align-items: center;
   gap: 1rem;
   margin-top: 1rem;
-}
-.managed-content-actions .status-select {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
 }
 .restriction-label {
   color: #954a1c;
@@ -2407,4 +2313,50 @@ fieldset:disabled {
   scroll-margin-top: 100px;
   outline: 2px solid #d5a137;
   outline-offset: 4px;
+}
+
+@layer components {
+  .content-search {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 18px 0 24px;
+  }
+  .content-search .field {
+    flex: 1 1 220px;
+    min-width: 0;
+  }
+  .content-search .text-link {
+    font-size: 13px;
+  }
+  .match-excerpt {
+    padding: 12px 0;
+    font-size: 13px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--color-muted);
+  }
+  .match-excerpt > span {
+    font-weight: 650;
+    margin-right: 6px;
+    color: var(--color-ink);
+  }
+  .agent-directory-owner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--color-muted);
+  }
+  .public-agent.selected {
+    border-color: var(--color-brand);
+    background: var(--color-sky);
+  }
+  .public-agent .text-link {
+    display: inline-block;
+    font-size: 12px;
+    margin-top: 10px;
+  }
 }

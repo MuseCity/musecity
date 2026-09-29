@@ -4,6 +4,7 @@ import type { MetaFunction } from "react-router";
 import {
   ContentKinds,
   CreationFormats,
+  ContentFilterLink,
   useContentSource,
 } from "../components/content-navigation";
 import {
@@ -90,7 +91,9 @@ function Home() {
       initial.page,
     ),
     me = useNeighborhoodData<Profile>("/me", undefined, true);
-  const p = profile.data;
+  const p = profile.data,
+    agentId = new URLSearchParams(location.search).get("agent"),
+    selectedAgent = p?.agents.find((agent) => agent.id === agentId);
   return (
     <>
       <QueryState
@@ -165,15 +168,38 @@ function Home() {
               </div>
               <div className="agent-mini-grid">
                 {p.agents.map((a) => (
-                  <article key={a.id} className="public-agent">
+                  <article
+                    key={a.id}
+                    className={
+                      "public-agent " +
+                      (selectedAgent?.id === a.id ? "selected" : "")
+                    }
+                  >
                     <Bot size={22} />
                     <div>
-                      <h3>{a.name}</h3>
+                      <h3>
+                        <ContentFilterLink
+                          field="agent"
+                          value={a.id}
+                          aria-current={
+                            selectedAgent?.id === a.id ? "page" : undefined
+                          }
+                        >
+                          {a.name}
+                        </ContentFilterLink>
+                      </h3>
                       <span>{p.name}’s Agent</span>
                       <p>
                         {a.description ||
                           "Helping their person make good things."}
                       </p>
+                      <ContentFilterLink
+                        className="text-link"
+                        field="agent"
+                        value={a.id}
+                      >
+                        View public content →
+                      </ContentFilterLink>
                     </div>
                   </article>
                 ))}
@@ -181,8 +207,18 @@ function Home() {
             </section>
           )}
           <div className="section-heading">
-            <h2>From this household</h2>
-            <span>Public creations, updates, and help requests</span>
+            <h2>
+              {selectedAgent
+                ? selectedAgent.name + "’s public content"
+                : "From this household"}
+            </h2>
+            {selectedAgent ? (
+              <ContentFilterLink className="text-link" field="agent" value="">
+                All household content
+              </ContentFilterLink>
+            ) : (
+              <span>Public creations and updates</span>
+            )}
           </div>
           <ContentKinds />
           {contentKind(new URLSearchParams(location.search)) === "work" && (

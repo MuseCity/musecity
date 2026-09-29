@@ -21,12 +21,11 @@ import {
   PostBody,
   QueryState,
   ReportButton,
-  helpLabel,
 } from "../components/neighborhood";
 import { Conversation } from "../components/conversation";
 import { PostEditor } from "../components/post-editor";
 import { Notice, Dialog } from "../components/ui";
-import { helpStatuses, type PostView, type Profile } from "../shared/contracts";
+import { type PostView, type Profile } from "../shared/contracts";
 export async function loader(args: LoaderFunctionArgs) {
   const content = await publicRead<PostView>(args, "/posts/" + args.params.id);
   const comments = await publicComments(args, "posts", args.params.id!);
@@ -62,24 +61,6 @@ function Content() {
     [error, setError] = useState(""),
     [remove, setRemove] = useState(false);
   const p = query.data;
-  async function status(value: string) {
-    if (!p) return;
-    setBusy(true);
-    setError("");
-    try {
-      query.setData(
-        await api<PostView>(
-          "/posts/" + p.id + "/status",
-          { revision: p.revision, status: value },
-          "PATCH",
-        ),
-      );
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  }
   async function deletePost() {
     if (!p) return;
     setBusy(true);
@@ -138,29 +119,13 @@ function Content() {
               {me.data?.id === p.owner.id && !edit && (
                 <>
                   <button className="text-link" onClick={() => setEdit(true)}>
-                    Edit {p.kind === "help" ? "help request" : "update"}
+                    Edit update
                   </button>
-                  {p.kind === "help" && (
-                    <label className="status-select">
-                      Progress
-                      <select
-                        disabled={busy}
-                        value={p.helpStatus!}
-                        onChange={(e) => void status(e.target.value)}
-                      >
-                        {helpStatuses.map((s) => (
-                          <option key={s} value={s}>
-                            {helpLabel[s]}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
                   <button
                     className="text-button"
                     onClick={() => setRemove(true)}
                   >
-                    Delete {p?.kind === "help" ? "help request" : "update"}
+                    Delete update
                   </button>
                 </>
               )}
@@ -200,7 +165,7 @@ function Content() {
             disabled={busy}
             onClick={() => void deletePost()}
           >
-            Delete {p?.kind === "help" ? "help request" : "update"}
+            Delete update
           </button>
         </Dialog>
       )}

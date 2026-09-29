@@ -41,14 +41,12 @@ async function content(f: ReturnType<typeof fixture>, token = "fixture:alice") {
     token,
     body: { kind: "update", text: "An update with interactions" },
   });
-  const help = await f.call("/posts", {
+  const secondPost = await f.call("/posts", {
     method: "POST",
     token,
     body: {
-      kind: "help",
-      title: "Need feedback",
+      kind: "update",
       text: "Please review",
-      expectedOutcome: "Useful feedback",
     },
   });
   const comment = await f.call(`/posts/${post.data.id}/comments`, {
@@ -60,12 +58,12 @@ async function content(f: ReturnType<typeof fixture>, token = "fixture:alice") {
   return {
     work: work.data,
     post: post.data,
-    help: help.data,
+    secondPost: secondPost.data,
     comment: comment.data,
     paths: [
       `/works/${work.data.workId}`,
       `/posts/${post.data.id}`,
-      `/posts/${help.data.id}`,
+      `/posts/${secondPost.data.id}`,
       `/comments/${comment.data.id}`,
     ],
   };
@@ -95,7 +93,7 @@ const admin = (sql: string, values: unknown[] = []) =>
   withDatabase(config.testAdminUrl, (db) => db.query(sql, values));
 
 describe("content interactions through real isolated PostgreSQL", () => {
-  it("supports votes, independent likes and private saves on human and Agent creations, updates, help and replies", async () => {
+  it("supports votes, independent likes and private saves on human and Agent creations, updates and replies", async () => {
     const f = fixture(),
       token = await agent(f);
     for (const author of ["fixture:alice", token]) {
@@ -348,7 +346,7 @@ describe("content interactions through real isolated PostgreSQL", () => {
       (await f.call("/me/saved", { token: "fixture:bob" })).data.items.map(
         (i: any) => i.id,
       ),
-    ).toEqual([c.help.id]);
+    ).toEqual([c.secondPost.id]);
     await admin(
       "UPDATE musecity.accounts SET status='restricted' WHERE id=$1",
       [alice.id],
@@ -432,7 +430,8 @@ describe("content interactions through real isolated PostgreSQL", () => {
     );
     expect(focused.data.items[0].id).toBe(ids.at(-1));
     expect(
-      (await f.call(`/posts/${c.help.id}/comments?focus=${shared.id}`)).status,
+      (await f.call(`/posts/${c.secondPost.id}/comments?focus=${shared.id}`))
+        .status,
     ).toBe(404);
   });
 

@@ -1,11 +1,19 @@
 import type { Database } from "./database";
 import { requireValue } from "./errors";
+import { siteBuilders } from "../shared/site-builders";
 
 // Bounded chunks stay well below both the 50,000 URL and 50 MiB sitemap limits.
 export const sitemapChunkSize = 1000;
 export type SitemapEntry = { path: string; lastmod: Date | string | null };
+const builderEntries = JSON.stringify(
+  siteBuilders.map(({ path, guidePath, aliases }) => ({
+    path,
+    guidePath,
+    aliases,
+  })),
+);
 const entriesSql = `WITH public_works AS (
- SELECT w.id,w.published_at,r.tag_ids FROM musecity.works w
+ SELECT w.id,w.published_at,r.tag_ids,r.payload FROM musecity.works w
  JOIN musecity.accounts a ON a.id=w.owner_account_id
  JOIN musecity.work_revisions r ON r.id=w.published_revision_id
  WHERE w.status='published' AND NOT w.blocked AND a.status='active'
@@ -13,8 +21,14 @@ const entriesSql = `WITH public_works AS (
  SELECT p.id,p.updated_at,p.tag_ids FROM musecity.posts p
  JOIN musecity.accounts a ON a.id=p.owner_account_id
  WHERE NOT p.deleted AND NOT p.blocked AND a.status='active'
+), builders AS (
+ SELECT * FROM jsonb_to_recordset($1::jsonb) AS b(path text,"guidePath" text,aliases text[])
 ), entries AS (
  SELECT path,NULL::timestamptz AS lastmod FROM (VALUES ('/'),('/?view=sites'),('/neighbors'),('/governance'),('/agents'),('/agents/mcp')) AS pages(path)
+ UNION ALL SELECT "guidePath",NULL::timestamptz FROM builders
+ UNION ALL SELECT b.path,NULL::timestamptz FROM builders b WHERE EXISTS(
+ SELECT 1 FROM public_works w WHERE w.payload->>'type'='website' AND w.payload->'aiDeclaration'='true'::jsonb
+ AND EXISTS(SELECT 1 FROM jsonb_array_elements_text(COALESCE(w.payload->'aiTools','[]'::jsonb)) AS tools(tool) WHERE lower(btrim(tool))=ANY(b.aliases)))
  UNION ALL SELECT '/works/'||id,published_at FROM public_works
  UNION ALL SELECT '/posts/'||id,updated_at FROM public_posts
  UNION ALL SELECT '/u/'||handle,NULL::timestamptz FROM musecity.accounts WHERE status='active'
@@ -89,6 +103,7 @@ export async function sitemap(db: Database, origin: string, part?: string) {
   const count = Number(
     (await db.one<{ count: string }>(
       entriesSql + " SELECT count(*) FROM entries",
+      [builderEntries],
     ))!.count,
   );
   if (part === undefined && count > sitemapChunkSize)
@@ -102,8 +117,8 @@ export async function sitemap(db: Database, origin: string, part?: string) {
   );
   const entries = await db.query<SitemapEntry>(
     entriesSql +
-      " SELECT path,lastmod FROM entries ORDER BY path LIMIT $1 OFFSET $2",
-    [sitemapChunkSize, (page - 1) * sitemapChunkSize],
+      " SELECT path,lastmod FROM entries ORDER BY path LIMIT $2 OFFSET $3",
+    [builderEntries, sitemapChunkSize, (page - 1) * sitemapChunkSize],
   );
   return sitemapXml(origin, entries);
 }

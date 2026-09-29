@@ -7,7 +7,7 @@ import {
   shareHref,
 } from "../shared/content-navigation";
 import { workTypes, typeLabels } from "../shared/contracts";
-import { MessageCircle, Handshake, Sparkles } from "lucide-react";
+import { MessageCircle, Sparkles } from "lucide-react";
 import {
   createContext,
   useContext,
@@ -199,7 +199,7 @@ export function CreationFormats() {
   );
 }
 
-export function ShareOptions({ kind }: { kind: "work" | "update" | "help" }) {
+export function ShareOptions({ kind }: { kind: "work" | "update" }) {
   const state = useContentSource();
   const location = useLocation(),
     tag = new URLSearchParams(location.search).get("tag");
@@ -209,7 +209,6 @@ export function ShareOptions({ kind }: { kind: "work" | "update" | "help" }) {
         [
           ["update", MessageCircle, "Updates", "What’s happening?"],
           ["work", Sparkles, "Creations", "Show what you made"],
-          ["help", Handshake, "Help requests", "Ask for a hand"],
         ] as const
       ).map(([key, Icon, label, description]) => (
         <Link

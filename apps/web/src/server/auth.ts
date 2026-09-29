@@ -223,7 +223,31 @@ export async function deduplicate<T>(
     "IDEMPOTENCY_KEY_REQUIRED",
     "Supply an Idempotency-Key for this write.",
   );
-  const hash = await digest(JSON.stringify(body));
+  // Only the digest retains former defaults, so historical update retries stay equivalent.
+  const legacyPost = (post: Record<string, unknown>) => ({
+    kind: post.kind,
+    text: post.text,
+    title: "",
+    expectedOutcome: "",
+    tagIds: post.tagIds,
+    mediaIds: post.mediaIds,
+  });
+  let hashBody = body;
+  if (body && typeof body === "object") {
+    const input = body as Record<string, unknown>;
+    if (operation === "POST:/api/v1/posts" && input.kind === "update")
+      hashBody = legacyPost(input);
+    if (
+      /^PATCH:\/api\/v1\/posts\/[^/]+$/.test(operation) &&
+      input.content &&
+      typeof input.content === "object"
+    )
+      hashBody = {
+        revision: input.revision,
+        content: legacyPost(input.content as Record<string, unknown>),
+      };
+  }
+  const hash = await digest(JSON.stringify(hashBody));
   const saved = await db.one<{ request_hash: string; response: T }>(
     "SELECT request_hash,response FROM musecity.idempotency WHERE actor_key=$1 AND operation=$2 AND key=$3",
     [a.key, operation, key],
@@ -239,6 +263,16 @@ export async function deduplicate<T>(
     // Project only those response positions; preserve stored history and content.
     if (saved.response && typeof saved.response === "object") {
       const response = saved.response as Record<string, unknown>;
+      if (
+        /^(POST:\/api\/v1\/posts|PATCH:\/api\/v1\/posts\/[^/]+)$/.test(
+          operation,
+        ) &&
+        response.kind === "update"
+      ) {
+        delete response.title;
+        delete response.expectedOutcome;
+        delete response.helpStatus;
+      }
       const owner =
         operation === "PATCH:/api/v1/me" ? response : response.owner;
       if (owner && typeof owner === "object")
@@ -273,6 +307,6 @@ export async function dailyBudget(
     row && row.counter <= limit,
     429,
     "COMMUNITY_DAILY_LIMIT",
-    `Your household has reached today's ${limit} ${kind === "publication" ? "new updates, help requests and creations" : "replies"}. Try again after 00:00 UTC.`,
+    `Your household has reached today's ${limit} ${kind === "publication" ? "new updates and creations" : "replies"}. Try again after 00:00 UTC.`,
   );
 }
