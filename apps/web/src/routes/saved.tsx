@@ -61,7 +61,7 @@ function SavedContent() {
         ) : (
           <Empty title="Keep something worth returning to.">
             <p>
-              Use Save on a creation, update or reply. Only you can see this
+              Use Save on a creation, post or reply. Only you can see this
               collection.
             </p>
             <Link className="text-link inline-block mt-4" to="/">

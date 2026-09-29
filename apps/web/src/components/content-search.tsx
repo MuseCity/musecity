@@ -7,7 +7,7 @@ import {
 
 export function ContentSearch({
   label = "Search content",
-  placeholder = "Search creations and updates…",
+  placeholder = "Search creations and posts…",
 }: {
   label?: string;
   placeholder?: string;

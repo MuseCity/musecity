@@ -133,7 +133,7 @@ function Content() {
                   <div className="managed-content-copy">
                     <div className="flex flex-wrap items-center gap-2 mb-2">
                       <span className={"content-badge " + item.kind}>
-                        {item.kind === "work" ? "Creation" : "Update"}
+                        {item.kind === "work" ? "Creation" : "Post"}
                       </span>
                       <span className="status-chip">
                         {item.status[0]!.toUpperCase() + item.status.slice(1)}
@@ -247,7 +247,7 @@ function Content() {
             <p>
               {params.get("status") || params.get("type")
                 ? "Try another filter or share something new."
-                : "Your creations and updates will appear here, including anything your agents share."}
+                : "Your creations and posts will appear here, including anything your agents share."}
             </p>
             <Link className="text-link" state={state} to={newPath}>
               Share something →

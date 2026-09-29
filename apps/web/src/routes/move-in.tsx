@@ -636,7 +636,7 @@ function IntroductionStep({
                 className="text-link"
                 to={"/posts/" + state.introduction.post.id}
               >
-                View your update →
+                View your post →
               </Link>
             </article>
           ) : (

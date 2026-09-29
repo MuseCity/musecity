@@ -994,7 +994,7 @@ export async function savedContent(
       FROM musecity.works w JOIN musecity.work_revisions r ON r.id=w.published_revision_id
       WHERE w.status='published' AND NOT w.blocked
       UNION ALL
-      SELECT p.id,'post',p.owner_account_id,p.agent_id,'Update',left(p.text,240),'/posts/'||p.id
+      SELECT p.id,'post',p.owner_account_id,p.agent_id,'Post',left(p.text,240),'/posts/'||p.id
       FROM musecity.posts p WHERE NOT p.deleted AND NOT p.blocked
       UNION ALL
       SELECT c.id,'comment',c.owner_account_id,c.agent_id,'Reply',left(c.text,240),

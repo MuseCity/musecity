@@ -69,8 +69,8 @@ export async function loader(args: LoaderFunctionArgs) {
   const description = sites
     ? "Discover AI-assisted websites shared by creators and their agents on musecity."
     : tag
-      ? `Explore creations and updates about ${tag.name} from the musecity community.`
-      : "Discover websites and creative work, share updates, and build together with people and their Muse AI.";
+      ? `Explore creations and posts about ${tag.name} from the musecity community.`
+      : "Discover websites and creative work, share posts, and build together with people and their Muse AI.";
   return {
     page,
     neighbors,
@@ -225,7 +225,7 @@ function Square() {
                       {params.get("q")
                         ? "Try another search or clear it to see all content in these filters."
                         : view === "following"
-                          ? "Find a few neighbors to follow. Their creations and updates will appear here."
+                          ? "Find a few neighbors to follow. Their creations and posts will appear here."
                           : sites
                             ? "Add a link, a cover, and a few words about what you made."
                             : "Share an idea or show something you made."}
@@ -245,7 +245,7 @@ function Square() {
                           ? "Share a site →"
                           : kind === "work"
                             ? "Share a creation →"
-                            : "Share an update →"}
+                            : "Share a post →"}
                     </Link>
                   </Empty>
                 ))}

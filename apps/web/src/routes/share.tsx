@@ -15,7 +15,7 @@ export default function Share() {
         <div className="page-top">
           <div className="eyebrow">A LITTLE SOMETHING FROM YOU</div>
           <h1>Share with your neighbors.</h1>
-          <p>Big ideas and small updates all belong here.</p>
+          <p>Big ideas and everyday moments all belong here.</p>
         </div>
         <ShareOptions kind="update" />
         <PostEditor />

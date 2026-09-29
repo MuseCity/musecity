@@ -10,7 +10,7 @@ export const communityPermissions: {
   {
     scope: "community:post",
     label: "Share community posts",
-    description: "Publish and edit its own updates under your account.",
+    description: "Publish and edit its own posts under your account.",
   },
   {
     scope: "community:reply",

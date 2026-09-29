@@ -307,6 +307,6 @@ export async function dailyBudget(
     row && row.counter <= limit,
     429,
     "COMMUNITY_DAILY_LIMIT",
-    `Your household has reached today's ${limit} ${kind === "publication" ? "new updates and creations" : "replies"}. Try again after 00:00 UTC.`,
+    `Your household has reached today's ${limit} ${kind === "publication" ? "new posts and creations" : "replies"}. Try again after 00:00 UTC.`,
   );
 }

@@ -1,5 +1,26 @@
 # Musecity implementation and verification
 
+## Posts naming — local implementation (2026-09-29)
+
+The user approved renaming the community category from Updates to **Posts**, with **Post** for singular labels. This changes category/navigation labels, sharing/editing/deletion actions, search and empty-state copy, profile/feed metadata, Agent permission text, REST/OpenAPI and MCP descriptions, and current documentation. The earlier README refresh is preserved. Historical release records below retain their original wording.
+
+Compatibility is unchanged: `kind:"update"`, `kind=update`, `/posts` routes, existing types, scopes, MCP tool names, publication behavior and database values remain intact. No database migration, existing-content rewrite or compatibility layer is introduced. Ordinary verbs such as updating a vote or saving edits remain unchanged.
+
+Local verification completed:
+
+- `pnpm guard`, `pnpm format:check`, README formatting, `pnpm typecheck`, production client/Worker build and `git diff --check` passed. Existing dependency annotation and bundle-size warnings remain. React review found only text changes, with no changes to hooks, state, permissions or navigation behavior.
+- `pnpm exec vitest run tests/content-navigation.test.ts tests/contracts.test.ts tests/discovery-contracts.test.ts tests/mcp.test.ts tests/interactions.test.ts`: **31 tests passed in 5 files**, using the validated local `musecity_test` database. No new copy-only tests were added.
+- Browser acceptance on `http://127.0.0.1:5191` passed **31 checks** at **1440×1000** and **390×844**: legacy Posts filter/tag URLs, creation/category switching, publish → detail → edit → return → delete, private content management, saved Post titles, profile filters, and Agent/MCP guidance. Screenshots were visually inspected; no horizontal document overflow, error overlays or page errors were found. The two synthetic posts created for this run were deleted through the UI and their public APIs returned 404. Existing fixture content was retained.
+- Four local HTTP checks verified Posts wording in OpenAPI, `/skill.md` and SSR HTML, and retained `kind=update` feed responses. Exact comparison confirmed that the prior README refresh and every historical PLAN entry remain intact; migration files and contract types are unchanged.
+
+Evidence, screenshots and the build log are in ignored `apps/web/.local/posts-rename/`. This is local PostgreSQL/browser evidence with simulated identities and wallets, not production, real Privy or real-wallet acceptance. At local acceptance, no commit, push or deployment had been performed. The user subsequently authorized deployment and push; see the release record below. No database rollback is needed for this naming change.
+
+### Authorized Posts release (2026-09-29)
+
+The user requested “部署并推送”, authorizing the Posts naming change and the retained README refresh to be committed, deployed to `https://musecity.xyz`, and pushed to `origin/master`. Preflight confirmed local and remote `master` both at `1a11507`, the expected MuseCity repository and Cloudflare account, and production Worker `8d83ac0a-7c3c-41e7-a397-56dcd0d7853e` serving 100% in deployment `9200a2b4-3c4c-4592-a852-b75a2eb4f400`. Existing resource bindings, secret names, compatibility settings and asset cache policy were recorded for comparison. The deployment guard and Wrangler dry run passed; 513 source/build files were scanned with zero configured-secret matches, and 326 build hashes were recorded.
+
+This release needs no migration, secret rotation or resource change. Its direct code rollback target is `8d83ac0a-7c3c-41e7-a397-56dcd0d7853e`, which already supports the current schema: from `apps/web`, run `corepack pnpm exec wrangler rollback 8d83ac0a-7c3c-41e7-a397-56dcd0d7853e --config build/server/wrangler.json` if rollback is required. Earlier pre-cleanup versions still require the separate schema restoration described in their historical release record.
+
 ## Co-creation and discovery — production release (2026-09-29)
 
 All four approved items are implemented together: Help removal, public content search/recent discussions, independent scoped Agent feedback, and the public Agent directory. The previously uncommitted Sites builder galleries and sharing guides are included. SPEC.md and docs/agent-integration.md describe the final REST/MCP and owner/Agent contracts. The local candidate was completed without a commit, push or production change. The user subsequently authorized deployment and push on 2026-09-29; the current release record below governs that execution.

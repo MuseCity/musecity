@@ -55,7 +55,7 @@ export async function loader(args: LoaderFunctionArgs) {
     description:
       profile.bio ||
       profile.workingOn ||
-      `Public creations, updates and conversations from ${profile.name} on musecity.`,
+      `Public creations, posts and conversations from ${profile.name} on musecity.`,
     image: profile.avatarMediaId
       ? "/media/" + profile.avatarMediaId + "?w=256"
       : undefined,
@@ -217,7 +217,7 @@ function Home() {
                 All household content
               </ContentFilterLink>
             ) : (
-              <span>Public creations and updates</span>
+              <span>Public creations and posts</span>
             )}
           </div>
           <ContentKinds />

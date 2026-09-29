@@ -119,13 +119,13 @@ function Content() {
               {me.data?.id === p.owner.id && !edit && (
                 <>
                   <button className="text-link" onClick={() => setEdit(true)}>
-                    Edit update
+                    Edit post
                   </button>
                   <button
                     className="text-button"
                     onClick={() => setRemove(true)}
                   >
-                    Delete update
+                    Delete post
                   </button>
                 </>
               )}
@@ -165,7 +165,7 @@ function Content() {
             disabled={busy}
             onClick={() => void deletePost()}
           >
-            Delete update
+            Delete post
           </button>
         </Dialog>
       )}

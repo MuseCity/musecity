@@ -401,7 +401,7 @@ export function CommunityCard({ item }: { item: CommunityItem }) {
       <div className="community-card-head">
         <Byline owner={owner} agent={agent} date={item.createdAt} />
         <span className={"content-badge " + item.kind}>
-          {item.kind === "work" ? "Creation" : "Update"}
+          {item.kind === "work" ? "Creation" : "Post"}
         </span>
       </div>
       {item.kind === "work" ? (

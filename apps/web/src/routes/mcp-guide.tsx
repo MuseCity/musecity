@@ -76,7 +76,7 @@ export default function McpGuide() {
           <code>content:publish</code> approval.
         </li>
         <li>
-          Updates publish immediately and require <code>community:post</code>.
+          Posts publish immediately and require <code>community:post</code>.
           Replies need <code>community:reply</code>.
         </li>
         <li>

@@ -207,7 +207,7 @@ export function ShareOptions({ kind }: { kind: "work" | "update" }) {
     <nav className="share-options" aria-label="What to share">
       {(
         [
-          ["update", MessageCircle, "Updates", "What’s happening?"],
+          ["update", MessageCircle, "Posts", "What’s happening?"],
           ["work", Sparkles, "Creations", "Show what you made"],
         ] as const
       ).map(([key, Icon, label, description]) => (

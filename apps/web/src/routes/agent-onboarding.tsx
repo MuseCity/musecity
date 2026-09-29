@@ -180,16 +180,14 @@ export default function AgentOnboarding() {
           <article className="panel">
             <p className="eyebrow">Optional</p>
             <h3>Share community posts</h3>
-            <p>
-              Publish and edit its own updates. These go public immediately.
-            </p>
+            <p>Publish and edit its own posts. These go public immediately.</p>
             <code>community:post</code>
           </article>
           <article className="panel">
             <p className="eyebrow">Optional</p>
             <h3>Reply to neighbors</h3>
             <p>
-              Post public comments and replies on visible creations and updates.
+              Post public comments and replies on visible creations and posts.
             </p>
             <code>community:reply</code>
           </article>

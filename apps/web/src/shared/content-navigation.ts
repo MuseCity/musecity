@@ -3,7 +3,7 @@ import { galleryBuilder, guideBuilder } from "./site-builders";
 export const contentKinds = [
   ["all", "All"],
   ["work", "Creations"],
-  ["update", "Updates"],
+  ["update", "Posts"],
 ] as const;
 
 export function contentKind(params: URLSearchParams) {

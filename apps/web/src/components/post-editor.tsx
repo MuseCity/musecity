@@ -167,7 +167,7 @@ export function PostEditor({
           disabled={busy || uploading || !body.text.trim()}
           onClick={() => void save()}
         >
-          {busy ? "Sharing…" : existing ? "Save changes" : "Share update"}
+          {busy ? "Sharing…" : existing ? "Save changes" : "Share post"}
         </button>
         {onCancel ? (
           <button
