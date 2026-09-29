@@ -102,6 +102,54 @@ async function inHistoricalSchema(
 }
 
 describe("help removal migration against real local PostgreSQL", () => {
+  it("pins article extraction to builtins even with a hostile caller search path", async () => {
+    assertLocalTarget(config.testAdminUrl, "musecity_test", "musecity_admin");
+    await withDatabase(config.testAdminUrl, async (db) => {
+      await db.query("BEGIN");
+      try {
+        await db.query("CREATE SCHEMA search_path_qa");
+        await db.query(
+          "CREATE FUNCTION search_path_qa.jsonb_typeof(jsonb) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT 'shadowed'::text $$",
+        );
+        await db.query("SET LOCAL search_path = search_path_qa, pg_catalog");
+        await db.query(
+          "ALTER FUNCTION musecity.article_search_text(jsonb) RESET search_path",
+        );
+        const document = JSON.stringify({
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "Visible 设计" }],
+              attrs: { title: "Ignored attribute" },
+            },
+          ],
+        });
+        const extract = () =>
+          db.one<{ text: string }>(
+            "SELECT musecity.article_search_text($1::jsonb) AS text",
+            [document],
+          );
+        expect(await extract()).toEqual({ text: "" });
+        await db.query(
+          readFileSync("migrations/0011_article_search_path.sql", "utf8"),
+        );
+        expect(await extract()).toEqual({ text: "Visible 设计\n" });
+        expect(
+          await db.one(
+            "SELECT proconfig, provolatile, prosecdef FROM pg_proc WHERE oid='musecity.article_search_text(jsonb)'::regprocedure",
+          ),
+        ).toEqual({
+          proconfig: ["search_path=pg_catalog"],
+          provolatile: "i",
+          prosecdef: false,
+        });
+      } finally {
+        await db.query("ROLLBACK");
+      }
+    });
+  });
+
   it("retains the exact checksums of every historical migration", () => {
     for (const [name, checksum] of Object.entries(historicalChecksums))
       expect(

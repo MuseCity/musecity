@@ -8,7 +8,7 @@ Community content is now Creations and Updates. This extension adds keyword sear
 
 Help requests are retired entirely. Posts accept only `kind:"update"`, without `title`, `expectedOutcome` or `helpStatus`; old help inputs, filters and status writes are rejected rather than archived or converted. Creation titles and personal `canHelp` remain. The cleanup migration requires zero help rows, including hidden/deleted rows, and otherwise aborts. Original migrations remain immutable. Ordinary update retries retain idempotency and project only current fields.
 
-Production ordering is additive `0009_discovery_feedback.sql`, compatible new Worker, then zero-help cleanup `0010_remove_help.sql`; never run the full pending migration directory before switching the Worker. After dropping help columns, restore their empty definitions/constraints before rolling back an old Worker. Production migration and deployment require separate authorization.
+Production ordering is additive `0009_discovery_feedback.sql` and search-path hardening `0011_article_search_path.sql`, compatible new Worker, then zero-help cleanup `0010_remove_help.sql`; execute these files explicitly in this order, never run the full pending migration directory before switching the Worker. The immutable article extractor fixes `search_path` to `pg_catalog` and remains security invoker. After dropping help columns, restore their empty definitions/constraints before rolling back an old Worker. Production migration and deployment require separate authorization.
 
 ## 1. Product and scope
 
