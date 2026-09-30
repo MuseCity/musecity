@@ -31,6 +31,66 @@ export function MembershipCard({
         </button>
       </section>
     );
+  if (onWalletPage)
+    return (
+      <section className="governance-panel wallet-membership">
+        <div className="wallet-section-heading">
+          <h2>Membership</h2>
+          <Link to="/governance" className="text-link">
+            Governance ↗
+          </Link>
+        </div>
+        {query.error ? (
+          <>
+            <p role="alert">Membership is temporarily unavailable.</p>
+            <button className="text-link" onClick={query.reload}>
+              Retry membership check
+            </button>
+          </>
+        ) : query.busy ? (
+          <p role="status">Checking membership…</p>
+        ) : query.data ? (
+          <>
+            <p>
+              <strong>
+                {query.data.formalMember ? "Formal member" : "Community member"}
+              </strong>
+              <span className="wallet-votes">
+                {query.data.weight} {query.data.weight === 1 ? "vote" : "votes"}
+              </span>
+            </p>
+            <p className="field-note">
+              Checked {governanceDate(query.data.checkedAt)}.
+            </p>
+          </>
+        ) : (
+          <p>Membership has not been checked yet.</p>
+        )}
+        <details className="wallet-membership-rules">
+          <summary>Membership rules</summary>
+          <p className="text-sm text-muted">
+            Hold at least 100,000 MUSEGOD on Robinhood Chain in the wallet
+            created here for 10 votes total and permission to publish proposals.
+            External or imported wallets do not qualify. Each vote submission
+            checks your current balance again.
+          </p>
+          {!query.busy && !query.error && query.data && (
+            <p className="field-note">
+              {query.data.balance === null
+                ? "No qualifying Musecity wallet."
+                : `${formatUnits(BigInt(query.data.balance), 18)} MUSEGOD on Robinhood Chain.`}
+            </p>
+          )}
+          <button
+            className="text-link"
+            disabled={query.busy}
+            onClick={query.reload}
+          >
+            Refresh membership
+          </button>
+        </details>
+      </section>
+    );
   return (
     <section className="governance-panel">
       <h2>{query.data?.formalMember ? "Formal member" : "Your membership"}</h2>

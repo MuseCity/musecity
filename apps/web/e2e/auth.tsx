@@ -1,7 +1,16 @@
 // Browser fixture entry only. Production root uses components/auth.tsx directly.
-import { useEffect, useState, useMemo, type ReactNode } from "react";
+import {
+  useEffect,
+  useState,
+  useMemo,
+  useRef,
+  useCallback,
+  type ReactNode,
+} from "react";
 import { AuthContext } from "../src/components/auth";
-import { fixtureWallet } from "./wallet";
+import { Dialog } from "../src/components/ui";
+import type { Transfer } from "../src/shared/wallet";
+import { fixtureWallet, defaultScenario, type WalletScenario } from "./wallet";
 export function AuthProvider({
   children,
 }: {
@@ -10,14 +19,71 @@ export function AuthProvider({
 }) {
   const [user, setUser] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [scenario, setScenario] = useState<WalletScenario>(defaultScenario);
+  const scenarioRef = useRef(defaultScenario);
+  const [approval, setApproval] = useState<Transfer | null>(null);
+  const pending = useRef<{
+    resolve: () => void;
+    reject: (error: Error) => void;
+  } | null>(null);
+  const requestApproval = useCallback(
+    (transfer: Transfer) =>
+      new Promise<void>((resolve, reject) => {
+        pending.current = { resolve, reject };
+        setApproval(transfer);
+      }),
+    [],
+  );
   const wallet = useMemo(
-    () => (user ? fixtureWallet(user) : undefined),
-    [user],
+    () =>
+      user
+        ? fixtureWallet(user, () => scenarioRef.current, requestApproval)
+        : undefined,
+    [user, requestApproval],
   );
   useEffect(() => {
     setUser(sessionStorage.getItem("musecity.fixture-user"));
     setReady(true);
   }, []);
+  useEffect(() => {
+    if (!scenario.membershipError) return;
+    const original = window.fetch;
+    window.fetch = async (input, init) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof Request
+            ? input.url
+            : input.href;
+      if (
+        new URL(url, window.location.href).pathname === "/api/v1/me/membership"
+      )
+        return Response.json(
+          {
+            error: {
+              code: "RPC_UNAVAILABLE",
+              message: "Local simulated membership check unavailable.",
+            },
+          },
+          { status: 503 },
+        );
+      return original(input, init);
+    };
+    return () => {
+      window.fetch = original;
+    };
+  }, [scenario.membershipError]);
+  function update(patch: Partial<WalletScenario>) {
+    scenarioRef.current = { ...scenarioRef.current, ...patch };
+    setScenario(scenarioRef.current);
+  }
+  function finish(accepted: boolean) {
+    setApproval(null);
+    const request = pending.current;
+    pending.current = null;
+    if (accepted) request?.resolve();
+    else request?.reject(new Error("User rejected request"));
+  }
   function change(value: string | null) {
     setUser(value);
     if (value) sessionStorage.setItem("musecity.fixture-user", value);
@@ -31,10 +97,13 @@ export function AuthProvider({
         login: () => change("alice"),
         logout: async () => change(null),
         token: async () => (user ? "fixture:" + user : null),
-        wallet,
-        walletAddress: wallet?.address,
-        walletsReady: ready,
-        retryWallet: async () => {},
+        wallet: scenario.connection === "ready" ? wallet : undefined,
+        walletAddress:
+          scenario.connection === "missing" ? undefined : wallet?.address,
+        walletsReady: ready && scenario.connection !== "preparing",
+        retryWallet: async () => {
+          update({ connection: "ready" });
+        },
         link: () => {},
         linked: ["twitter_oauth"],
         configured: ready,
@@ -52,7 +121,100 @@ export function AuthProvider({
           Switch test account
         </button>
       </div>
+      <details
+        className="text-xs bg-amber-50 px-4"
+        data-testid="wallet-fixture-controls"
+      >
+        <summary className="cursor-pointer py-1">
+          Local wallet test scenarios
+        </summary>
+        <div className="grid gap-2 py-3">
+          <label>
+            Balance scenario
+            <select
+              aria-label="Balance scenario"
+              value={scenario.balance}
+              onChange={(e) =>
+                update({ balance: e.target.value as WalletScenario["balance"] })
+              }
+            >
+              <option value="normal">Normal balances</option>
+              <option value="zero">Zero balances</option>
+              <option value="default-error">Default balance error</option>
+              <option value="custom-error">Custom token error</option>
+            </select>
+          </label>
+          <label>
+            Receipt scenario
+            <select
+              aria-label="Receipt scenario"
+              value={scenario.receipt}
+              onChange={(e) =>
+                update({ receipt: e.target.value as WalletScenario["receipt"] })
+              }
+            >
+              <option value="confirmed">Confirmed</option>
+              <option value="pending">Pending</option>
+              <option value="reverted">Reverted</option>
+              <option value="error">Status lookup error</option>
+            </select>
+          </label>
+          <label>
+            Connection scenario
+            <select
+              aria-label="Connection scenario"
+              value={scenario.connection}
+              onChange={(e) =>
+                update({
+                  connection: e.target.value as WalletScenario["connection"],
+                })
+              }
+            >
+              <option value="ready">Ready</option>
+              <option value="preparing">Preparing</option>
+              <option value="missing">Not created</option>
+              <option value="unavailable">Connection unavailable</option>
+            </select>
+          </label>
+          <button
+            className="text-link"
+            onClick={() => update({ uncertain: !scenario.uncertain })}
+          >
+            Uncertain submission: {scenario.uncertain ? "on" : "off"}
+          </button>
+          <button
+            className="text-link"
+            onClick={() => update({ networkError: !scenario.networkError })}
+          >
+            Network switch failure: {scenario.networkError ? "on" : "off"}
+          </button>
+          <button
+            className="text-link"
+            onClick={() =>
+              update({ membershipError: !scenario.membershipError })
+            }
+          >
+            Membership failure: {scenario.membershipError ? "on" : "off"}
+          </button>
+        </div>
+      </details>
       {children}
+      {approval && (
+        <Dialog title="Local wallet confirmation" onClose={() => finish(false)}>
+          <p>SIMULATION ONLY · No real funds or signatures.</p>
+          <p className="wallet-wrap">
+            {approval.amount} {approval.asset.symbol} to {approval.recipient}
+          </p>
+          <div className="wallet-dialog-actions">
+            <button className="secondary" onClick={() => finish(false)}>
+              Cancel simulated transfer
+            </button>
+            <button className="primary" onClick={() => finish(true)}>
+              Approve simulated transfer
+            </button>
+          </div>
+        </Dialog>
+      )}
     </AuthContext>
   );
 }
