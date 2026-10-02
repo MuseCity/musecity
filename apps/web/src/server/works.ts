@@ -56,7 +56,15 @@ export async function ownedWork(db: Database, a: Actor, workId: string) {
   requireValue(work, 404, "NOT_FOUND", "Creation not found.");
   return work;
 }
+export const originalitySql = (
+  owner = "a",
+) => `CASE WHEN o.status='verified' AND r.payload->>'type'='website' AND o.requested_url=r.payload->>'websiteUrl'
+ THEN jsonb_build_object('requestedUrl',o.requested_url,'verifiedUrl',o.final_url,'verifiedAt',o.checked_at,
+ 'subject',CASE WHEN o.subject_kind='agent' AND o.subject_agent_id=w.created_by_agent_id
+ THEN jsonb_build_object('kind','agent','id',s.id,'name',s.name)
+ ELSE jsonb_build_object('kind','account','id',${owner}.id,'name',${owner}.name) END) ELSE NULL END`;
 const viewSql = `SELECT w.id AS "workId",r.id AS "revisionId",w.published_revision_id AS "publishedRevisionId",w.status,r.payload AS body,
+ ${originalitySql()} AS originality,
  ${profileSql("a")} AS owner,
  CASE WHEN s.id IS NULL THEN NULL ELSE jsonb_build_object('id',s.id,'name',s.name) END AS "submittedBy",
  CASE WHEN p.id IS NULL THEN NULL ELSE jsonb_build_object('id',p.id,'name',p.name) END AS "publishedBy",
@@ -72,10 +80,20 @@ export async function workView(
   const own = a ? await ownedWork(db, a, workId) : null;
   const v = await db.one<WorkView>(
     viewSql +
-      ` JOIN musecity.work_revisions r ON r.id=w.${a ? "draft" : "published"}_revision_id WHERE w.id=$1 AND w.status<>'deleted' ${a ? "" : "AND w.status='published' AND NOT w.blocked AND a.status='active'"}`,
+      ` JOIN musecity.work_revisions r ON r.id=w.${a ? "draft" : "published"}_revision_id LEFT JOIN musecity.work_originality o ON o.revision_id=r.id WHERE w.id=$1 AND w.status<>'deleted' ${a ? "" : "AND w.status='published' AND NOT w.blocked AND a.status='active'"}`,
     [workId],
   );
   requireValue(v, 404, "NOT_FOUND", "Creation not found.");
+  if (a)
+    v.originalityCheck =
+      (await db.one<{
+        status: "verified" | "failed";
+        reason: import("../shared/originality").OriginalityReason | null;
+        checkedAt: string;
+      }>(
+        `SELECT status,reason,checked_at AS "checkedAt" FROM musecity.work_originality WHERE revision_id=$1 AND checked_at IS NOT NULL`,
+        [v.revisionId],
+      )) ?? null;
   v.interactions = (
     await interactionSummaries(db, [{ kind: "work", id: workId }], viewer)
   ).get("work:" + workId)!;
@@ -151,7 +169,7 @@ export async function feed(
   }
   const rows = await db.query<WorkView>(
     viewSql +
-      ` JOIN musecity.work_revisions r ON r.id=w.${a ? "draft" : "published"}_revision_id WHERE ${predicates.join(" AND ")} ORDER BY w.${time} DESC,w.id DESC LIMIT 21`,
+      ` JOIN musecity.work_revisions r ON r.id=w.${a ? "draft" : "published"}_revision_id LEFT JOIN musecity.work_originality o ON o.revision_id=r.id WHERE ${predicates.join(" AND ")} ORDER BY w.${time} DESC,w.id DESC LIMIT 21`,
     values,
   );
   const items: WorkView[] = JSON.parse(JSON.stringify(rows.slice(0, 20)));

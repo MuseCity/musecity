@@ -320,6 +320,8 @@ export type Profile = {
   joinedAt: string | null;
 };
 export type WorkView = {
+  originality: import("./originality").Originality | null;
+  originalityCheck?: import("./originality").OriginalityCheck | null;
   interactions: Interactions;
   restricted?: boolean;
   workId: string;
@@ -334,6 +336,10 @@ export type WorkView = {
   updatedAt: string;
 };
 export type FeedPage = { items: WorkView[]; nextCursor: string | null };
+export type OwnProfile = Profile & {
+  websiteMarker: string;
+  isModerator?: boolean;
+};
 export type ManagedContent = {
   id: string;
   title: string;

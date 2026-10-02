@@ -209,14 +209,13 @@ export async function audit(
       [a.agent.id],
     );
 }
-export async function deduplicate<T>(
+export async function lookupIdempotency<T>(
   db: Database,
   a: Actor,
   operation: string,
   key: string | null,
   body: unknown,
-  perform: () => Promise<T>,
-): Promise<T> {
+): Promise<{ hash: string; response?: T }> {
   requireValue(
     key && /^[a-zA-Z0-9_-]{8,120}$/.test(key),
     400,
@@ -278,12 +277,24 @@ export async function deduplicate<T>(
       if (owner && typeof owner === "object")
         delete (owner as Record<string, unknown>).ecosystems;
     }
-    return saved.response;
+    return { hash, response: saved.response };
   }
+  return { hash };
+}
+export async function deduplicate<T>(
+  db: Database,
+  a: Actor,
+  operation: string,
+  key: string | null,
+  body: unknown,
+  perform: () => Promise<T>,
+): Promise<T> {
+  const record = await lookupIdempotency<T>(db, a, operation, key, body);
+  if ("response" in record) return record.response!;
   const result = await perform();
   await db.query(
     "INSERT INTO musecity.idempotency(actor_key,operation,key,request_hash,response) VALUES($1,$2,$3,$4,$5)",
-    [a.key, operation, key, hash, JSON.stringify(result)],
+    [a.key, operation, key, record.hash, JSON.stringify(result)],
   );
   return result;
 }

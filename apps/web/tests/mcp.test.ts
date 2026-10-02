@@ -3,7 +3,12 @@ import {
   Client,
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
-import { draftScopes, scopes, type Scope } from "../src/shared/contracts";
+import {
+  draftScopes,
+  publishScopes,
+  scopes,
+  type Scope,
+} from "../src/shared/contracts";
 import { article, fixture, reset } from "./helpers";
 
 const clients: Client[] = [];
@@ -90,6 +95,81 @@ async function control(
 }
 
 describe("MCP over Streamable HTTP with the real local PostgreSQL API", () => {
+  it("shares website markers and verification with REST under publishing permissions", async () => {
+    const f = fixture(),
+      ag = await activate(f, publishScopes),
+      client = await connect(f, ag.token);
+    let checks = 0;
+    f.services.verifyWebsite = async (input) => {
+      checks++;
+      const { marker: _, ...subject } = input.subjects[0];
+      return {
+        status: "verified",
+        reason: null,
+        subject,
+        finalUrl: input.url,
+        checkedAt: new Date().toISOString(),
+      };
+    };
+    const identity = await call(client, "get_agent");
+    expect(identity.data.websiteMarker).toMatch(/^mc_a_/);
+    const creation = await call(client, "create_creation", {
+      content: {
+        type: "website",
+        title: "My MCP website",
+        description: "",
+        aiTools: [],
+        tagIds: [],
+        websiteUrl: "https://creator.example.com",
+      },
+      idempotencyKey: crypto.randomUUID(),
+    });
+    const args = {
+      id: creation.data.workId,
+      revisionId: creation.data.revisionId,
+      idempotencyKey: crypto.randomUUID(),
+    };
+    const verified = await call(client, "verify_creation_originality", args);
+    expect(verified.data.httpStatus).toBe(200);
+    expect(verified.data.work.originality.subject.id).toBe(ag.id);
+    expect(verified.data.work.status).toBe("draft");
+    expect(
+      (await call(client, "verify_creation_originality", args)).data.work
+        .originality,
+    ).toEqual(verified.data.work.originality);
+    expect(checks).toBe(1);
+    expect(
+      (
+        await client.callTool({
+          name: "verify_creation_originality",
+          arguments: { ...args, url: "https://other.example.com" },
+        })
+      ).isError,
+    ).toBe(true);
+    const denied = await activate(f),
+      deniedClient = await connect(f, denied.token);
+    expect(
+      (await call(deniedClient, "verify_creation_originality", args)).data
+        .httpStatus,
+    ).toBe(403);
+    const openapi: any = await (
+      await f.app.request("http://localhost/openapi.json")
+    ).json();
+    expect(
+      openapi.paths["/works/{id}/verify-originality"].post.requestBody.content[
+        "application/json"
+      ].schema.additionalProperties,
+    ).toBe(false);
+    expect(openapi.components.schemas.WorkView.properties).toHaveProperty(
+      "originality",
+    );
+    expect(
+      openapi.components.schemas.WorkContent.properties,
+    ).not.toHaveProperty("originality");
+    expect(openapi.components.schemas.Profile.properties).not.toHaveProperty(
+      "websiteMarker",
+    );
+  });
   it("handles scoped Agent feedback end-to-end without granting replies", async () => {
     const f = fixture(),
       ag = await activate(f, [

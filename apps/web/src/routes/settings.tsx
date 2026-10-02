@@ -3,7 +3,12 @@ import { useNeighborhoodData } from "../components/neighborhood";
 import { useEffect, useState } from "react";
 import { RequireAuth, useAuth } from "../components/auth";
 import { useApi, errorMessage } from "../components/api";
-import { handleSchema, type Profile } from "../shared/contracts";
+import {
+  handleSchema,
+  type OwnProfile,
+  type Profile,
+} from "../shared/contracts";
+import { WebsiteMarker } from "../components/originality";
 import { Notice } from "../components/ui";
 import { UploadImage } from "../components/upload";
 import { MediaImage } from "../components/media-image";
@@ -17,9 +22,7 @@ export default function SettingsPage() {
 function Settings() {
   const api = useApi();
   const auth = useAuth();
-  const [p, setP] = useState<(Profile & { isModerator?: boolean }) | null>(
-    null,
-  );
+  const [p, setP] = useState<OwnProfile | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -28,7 +31,7 @@ function Settings() {
     { id: string; name: string; handle: string }[]
   >("/me/blocks", undefined, true);
   useEffect(() => {
-    api<Profile>("/me")
+    api<OwnProfile>("/me")
       .then((profile) => {
         setP(profile);
         setSavedHandle(profile.handle);
@@ -53,7 +56,11 @@ function Settings() {
         },
         "PATCH",
       );
-      setP({ ...saved, isModerator: p.isModerator });
+      setP({
+        ...saved,
+        websiteMarker: p.websiteMarker,
+        isModerator: p.isModerator,
+      });
       setSavedHandle(saved.handle);
       setMessage("Profile saved.");
     } catch (e) {
@@ -213,6 +220,12 @@ function Settings() {
         <p className="text-emerald-700 text-sm mt-4" role="status">
           {message}
         </p>
+      )}
+      {p && (
+        <section className="panel mt-10">
+          <h2 className="mb-4">Original websites</h2>
+          <WebsiteMarker marker={p.websiteMarker} />
+        </section>
       )}
       <div className="panel mt-10">
         <h2>Blocked households</h2>

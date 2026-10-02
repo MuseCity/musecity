@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { Bot, ArrowUpRight } from "lucide-react";
 import { type WorkView, articleText } from "../shared/contracts";
 import { MediaImage } from "./media-image";
+import { OriginalityBadge } from "./originality";
 export const dateLabel = (date: string | null) =>
   date
     ? new Intl.DateTimeFormat("en", {
@@ -49,6 +50,11 @@ export function WorkList({ items }: { items: WorkView[] }) {
                 )}
               </div>
               <p className="excerpt">{excerpt}</p>
+              {work.originality && (
+                <div className="mt-2">
+                  <OriginalityBadge originality={work.originality} />
+                </div>
+              )}
               <div className="work-meta">
                 <Link to={"/u/" + work.owner.handle} className="creator">
                   {work.owner.name}

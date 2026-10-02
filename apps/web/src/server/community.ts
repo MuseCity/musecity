@@ -1,4 +1,5 @@
 import { notifyAgentFeedback } from "./agent-notifications";
+import { originalitySql } from "./works";
 import { normalizeSearch, matchExcerpt } from "../shared/search";
 import { interactionSummaries } from "./interactions";
 import { siteBuilder } from "../shared/site-builders";
@@ -323,9 +324,11 @@ export async function communityFeed(
  SELECT w.id,'work' AS kind,w.owner_account_id,w.created_by_agent_id AS agent_id,w.first_published_at AS created_at,r.search_text,
  jsonb_build_object('workId',w.id,'revisionId',r.id,'publishedRevisionId',r.id,'status',w.status,
  'body',r.payload-'articleDocument'||jsonb_build_object('description',left(COALESCE(NULLIF(r.payload->>'description',''),r.payload->>'title',''),240)),
- 'submittedBy',${agentSql("s")},'publishedBy',${agentSql("p")},'publishedAt',w.published_at,'updatedAt',w.updated_at) AS payload
+ 'submittedBy',${agentSql("s")},'publishedBy',${agentSql("p")},'publishedAt',w.published_at,'updatedAt',w.updated_at,'originality',${originalitySql("oa")}) AS payload
  FROM musecity.works w JOIN musecity.work_revisions r ON r.id=w.published_revision_id
  LEFT JOIN musecity.agents s ON s.id=w.created_by_agent_id LEFT JOIN musecity.agents p ON p.id=w.published_by_agent_id
+ JOIN musecity.accounts oa ON oa.id=w.owner_account_id
+ LEFT JOIN musecity.work_originality o ON o.revision_id=r.id
  WHERE w.status='published' AND NOT w.blocked AND ($1::text IS NULL OR r.payload->>'type'=$1) AND ($2::text IS NULL OR $2=ANY(r.tag_ids))
  AND ($7<>'sites' OR (r.payload->>'type'='website' AND r.payload->'aiDeclaration'='true'::jsonb))
  AND ($10::text[] IS NULL OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(COALESCE(r.payload->'aiTools','[]'::jsonb)) AS tools(tool) WHERE lower(btrim(tool))=ANY($10)))

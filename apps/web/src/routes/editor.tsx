@@ -5,6 +5,12 @@ import {
   useContentReturn,
 } from "../components/content-navigation";
 import { useTopics } from "../components/catalog";
+import { useNeighborhoodData } from "../components/neighborhood";
+import { OriginalityBadge, WebsiteMarker } from "../components/originality";
+import {
+  originalityReasons,
+  type OriginalityCheck,
+} from "../shared/originality";
 import { TopicPicker } from "../components/topic-picker";
 import { useEffect, useState } from "react";
 import {
@@ -20,6 +26,7 @@ import { RequireAuth } from "../components/auth";
 import { useApi, errorMessage } from "../components/api";
 import {
   type WorkView,
+  type OwnProfile,
   type WorkContent,
   type WorkType,
   type ArticleNode,
@@ -55,6 +62,7 @@ export default function EditorPage() {
 function Editor({ id }: { id?: string }) {
   const topics = useTopics();
   const api = useApi();
+  const me = useNeighborhoodData<OwnProfile>("/me", undefined, true);
   const navigate = useNavigate();
   const location = useLocation();
   const siteEntry =
@@ -217,6 +225,35 @@ function Editor({ id }: { id?: string }) {
       setBusy(false);
     }
   }
+  async function verifyOriginality(publicVersion = false) {
+    if (!saved || busy || (!publicVersion && dirty)) return;
+    const revisionId = publicVersion
+      ? saved.publishedRevisionId
+      : saved.revisionId;
+    if (!revisionId) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await api<{
+        revisionId: string;
+        check: OriginalityCheck;
+        work: WorkView;
+      }>("/works/" + saved.workId + "/verify-originality", { revisionId });
+      if (revisionId === saved.revisionId)
+        setSaved({ ...result.work, originalityCheck: result.check });
+      setMessage(
+        (publicVersion ? "Public version: " : "Saved draft: ") +
+          (result.check.status === "verified"
+            ? "Creator marker verified. Originality is the creator’s declaration."
+            : originalityReasons[result.check.reason!]),
+      );
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
   if (loading)
     return (
       <div className="state" role="status">
@@ -333,6 +370,70 @@ function Editor({ id }: { id?: string }) {
               onChange={(e) => update({ websiteUrl: e.target.value })}
             />
           </label>
+        )}
+        {body.type === "website" && (
+          <section
+            className="panel space-y-4"
+            aria-label="Original website verification"
+          >
+            <h2>Original website marker</h2>
+            {me.data && <WebsiteMarker marker={me.data.websiteMarker} />}
+            {me.error && (
+              <Notice>
+                {me.error}{" "}
+                <button type="button" className="text-link" onClick={me.reload}>
+                  Retry loading marker
+                </button>
+              </Notice>
+            )}
+            {saved?.body.type === "website" && (
+              <>
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span>Saved draft:</span>
+                  {saved.originality ? (
+                    <OriginalityBadge originality={saved.originality} />
+                  ) : (
+                    <span className="text-muted">No verified marker</span>
+                  )}
+                </div>
+                {saved.originalityCheck?.reason && (
+                  <p className="field-note">
+                    {originalityReasons[saved.originalityCheck.reason]}
+                  </p>
+                )}
+              </>
+            )}
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy || dirty || !saved}
+                onClick={() => void verifyOriginality()}
+              >
+                Verify website
+              </button>
+              {saved?.publishedRevisionId &&
+                saved.publishedRevisionId !== saved.revisionId && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() => void verifyOriginality(true)}
+                  >
+                    Recheck public version
+                  </button>
+                )}
+            </div>
+            {(!saved || dirty) && (
+              <p className="field-note">
+                Save your draft before checking its marker.
+              </p>
+            )}
+            <p className="field-note">
+              You can publish without a verified marker. Verification records
+              the creator’s declaration at the time of the check.
+            </p>
+          </section>
         )}
         {body.type === "video" && (
           <label className="field">

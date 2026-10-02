@@ -61,7 +61,7 @@ const worker = new Miniflare(
     modules: true,
     script: bundle.outputFiles[0].text,
     compatibilityDate: "2026-09-22",
-    compatibilityFlags: ["nodejs_compat"],
+    compatibilityFlags: ["nodejs_compat", "global_fetch_strictly_public"],
     outboundService: async (request) => {
       assert.equal(
         new URL(request.url).pathname,

@@ -15,6 +15,7 @@ import { assertLocalTarget } from "../scripts/local-target";
 import { localImageProcessor } from "./image-processor";
 import { fixtureAddresses } from "./wallet";
 import { governanceRules } from "../src/shared/governance";
+import { fixtureWebsiteVerifier } from "./originality-fixture";
 const local = JSON.parse(readFileSync(".local/database.json", "utf8"));
 assertLocalTarget(local.e2eUrl, "musecity_e2e", "musecity_app");
 mkdirSync(".local/e2e-media", { recursive: true });
@@ -44,6 +45,7 @@ const api = createApi({
   connectionString: local.e2eUrl,
   store,
   origin: "http://127.0.0.1:5191",
+  verifyWebsite: fixtureWebsiteVerifier(local.e2eUrl),
   images: { process: localImageProcessor, origin: "http://127.0.0.1:5191" },
   wallets: {
     findWallet: async (userId) => {

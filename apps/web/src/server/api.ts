@@ -10,6 +10,7 @@ import {
   privyVerifier,
   profile,
   deduplicate,
+  lookupIdempotency,
   rateLimit,
   type Actor,
   type VerifyHuman,
@@ -22,7 +23,20 @@ import {
   createWork,
   editWork,
   changePublication,
+  ownedWork,
 } from "./works";
+import {
+  prepareOriginality,
+  applyOriginality,
+  originalityBudget,
+  originalityCheck,
+  websiteRevision,
+} from "./originality";
+import {
+  verifyWebsite,
+  failedWebsiteCheck,
+  type WebsiteVerifier,
+} from "./website-verification";
 import { catalog, createTag } from "./tags";
 import {
   createUpload,
@@ -80,6 +94,7 @@ export type Services = {
   origin: string;
   images?: ImageServices;
   wallets?: WalletServices;
+  verifyWebsite?: WebsiteVerifier;
 };
 export const productionServices = (
   env: Env,
@@ -89,6 +104,7 @@ export const productionServices = (
   store: env.MEDIA,
   verify: privyVerifier(env.PRIVY_APP_ID, env.PRIVY_APP_SECRET),
   origin: env.APP_ORIGIN,
+  verifyWebsite: (input) => verifyWebsite(input, env.APP_ORIGIN),
   wallets: privyWalletServices(
     env.PRIVY_APP_ID,
     env.PRIVY_APP_SECRET,
@@ -147,6 +163,7 @@ export function createApi(s: Services) {
     human: boolean,
     fn: (d: Database, a: Actor) => Promise<T>,
     diagnostic = false,
+    chargeRate = true,
   ): Promise<T> => {
     const who = await identity(c.req.raw, s.verify);
     return db((d) =>
@@ -161,7 +178,7 @@ export function createApi(s: Services) {
         )
           await d.query("SELECT pg_advisory_xact_lock(624139188)");
         const a = await actor(d, who, scope, human, diagnostic);
-        if (c.req.method !== "GET")
+        if (c.req.method !== "GET" && chargeRate)
           await rateLimit(d, "account:" + a.account.id, 120);
         return fn(d, a);
       }),
@@ -273,6 +290,7 @@ export function createApi(s: Services) {
     c.json(
       await authed(c, undefined, true, async (d, a) => ({
         ...profile(a.account),
+        websiteMarker: a.account.website_marker,
         isModerator: await community.moderator(d, a),
       })),
     ),
@@ -465,15 +483,120 @@ export function createApi(s: Services) {
       ),
     );
   });
-  for (const action of ["publish", "unpublish"] as const)
-    app.post("/api/v1/works/:id/" + action, async (c) => {
-      const body = await json(c, z.object({ revisionId: z.string() }).strict());
-      return c.json(
-        await write(c, "content:publish", false, body, (d, a) =>
-          changePublication(d, a, c.req.param("id")!, action, body.revisionId),
+  const websiteWrite = async (c: Context<AppEnv>, publishing: boolean) => {
+    const body = await json(c, z.object({ revisionId: z.string() }).strict());
+    const workId = c.req.param("id")!,
+      operation = c.req.method + ":" + c.req.path;
+    const key = c.req.header("Idempotency-Key") ?? null;
+    const preflight = await authed(
+      c,
+      "content:publish",
+      false,
+      async (d, a) => {
+        const work = await ownedWork(d, a, workId);
+        requireValue(
+          !work.blocked,
+          423,
+          "CONTENT_BLOCKED",
+          "This creation is restricted.",
+        );
+        if (!publishing)
+          await websiteRevision(d, a, workId, body.revisionId, false);
+        const record = await lookupIdempotency(d, a, operation, key, body);
+        if ("response" in record) return { attempt: null, allowed: true };
+        const attempt = await prepareOriginality(
+          d,
+          a,
+          workId,
+          body.revisionId,
+          publishing,
+        );
+        const allowed = !attempt || (await originalityBudget(d, a));
+        return { attempt, allowed };
+      },
+    );
+    requireValue(
+      publishing || preflight.allowed,
+      429,
+      "RATE_LIMITED",
+      "Your household has reached ten website checks this minute. Retry in the next minute.",
+    );
+    const result = preflight.attempt
+      ? !preflight.allowed
+        ? failedWebsiteCheck("rate_limited")
+        : s.verifyWebsite
+          ? await s
+              .verifyWebsite(preflight.attempt)
+              .catch(() => failedWebsiteCheck("fetch_failed"))
+          : failedWebsiteCheck("unavailable")
+      : null;
+    // No database connection or transaction survives the external request.
+    return authed(
+      c,
+      "content:publish",
+      false,
+      async (d, a) => {
+        const work = await ownedWork(d, a, workId);
+        requireValue(
+          !work.blocked,
+          423,
+          "CONTENT_BLOCKED",
+          "This creation is restricted.",
+        );
+        if (!publishing)
+          await websiteRevision(d, a, workId, body.revisionId, false);
+        await deduplicate(d, a, operation, key, body, async () => {
+          // A quota rejection performs no page check. Keep the historical proof
+          // of an already public revision; a new publication still gets no badge.
+          if (
+            preflight.attempt &&
+            result &&
+            (preflight.allowed ||
+              work.published_revision_id !== body.revisionId)
+          )
+            await applyOriginality(d, a, preflight.attempt, result, publishing);
+          if (publishing)
+            await changePublication(d, a, workId, "publish", body.revisionId);
+          return { workId, revisionId: body.revisionId };
+        });
+        // Idempotency snapshots record the mutation, not a replayable badge.
+        if (publishing) return workView(d, workId, a);
+        const view = await workView(
+          d,
+          workId,
+          work.draft_revision_id === body.revisionId ? a : undefined,
+          a,
+        );
+        return {
+          revisionId: body.revisionId,
+          check: await originalityCheck(d, body.revisionId),
+          work: view,
+        };
+      },
+      false,
+      false,
+    );
+  };
+  app.post("/api/v1/works/:id/publish", async (c) =>
+    c.json(await websiteWrite(c, true)),
+  );
+  app.post("/api/v1/works/:id/verify-originality", async (c) =>
+    c.json(await websiteWrite(c, false)),
+  );
+  app.post("/api/v1/works/:id/unpublish", async (c) => {
+    const body = await json(c, z.object({ revisionId: z.string() }).strict());
+    return c.json(
+      await write(c, "content:publish", false, body, (d, a) =>
+        changePublication(
+          d,
+          a,
+          c.req.param("id")!,
+          "unpublish",
+          body.revisionId,
         ),
-      );
-    });
+      ),
+    );
+  });
   app.delete("/api/v1/works/:id", async (c) =>
     c.json(
       await write(c, "content:write", true, {}, (d, a) =>
@@ -771,6 +894,7 @@ export function createApi(s: Services) {
           );
           return {
             ...agentService.agentView(a.agent),
+            websiteMarker: a.agent.website_marker,
             owner: profile(a.account),
           };
         },

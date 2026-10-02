@@ -2,6 +2,7 @@ import { TopicLinks } from "./topic-picker";
 import { Link } from "react-router";
 import { ArrowUpRight, Bot } from "lucide-react";
 import { type WorkContent, type WorkView } from "../shared/contracts";
+import { OriginalityBadge } from "./originality";
 import { Article } from "./article";
 import { MediaImage } from "./media-image";
 import { dateLabel } from "./work-list";
@@ -86,6 +87,7 @@ export function WorkDetail({
       </div>
       <h1>{work.body.title}</h1>
       <div className="flex flex-wrap gap-2 items-center mt-4 text-xs text-muted">
+        <OriginalityBadge originality={work.originality} />
         <Link className="creator" to={"/u/" + work.owner.handle}>
           {work.owner.name}
         </Link>

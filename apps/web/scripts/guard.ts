@@ -41,6 +41,10 @@ const parsed = ts.parseConfigFileTextToJson(
 );
 if (parsed.error) throw new Error("Invalid Wrangler configuration");
 const config = parsed.config;
+if (!config.compatibility_flags?.includes("global_fetch_strictly_public"))
+  throw new Error(
+    "Creator-marker verification requires public-only Worker fetch egress.",
+  );
 if (process.argv.includes("--deployment")) {
   if (!config.hyperdrive?.[0]?.id || /^0+$/.test(config.hyperdrive[0].id))
     throw new Error("Configure a real Hyperdrive binding before deployment.");

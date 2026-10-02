@@ -12,6 +12,7 @@ const time = (name: string) =>
   timestamp(name, { withTimezone: true, mode: "date" }).notNull().defaultNow();
 export const accounts = appSchema.table("accounts", {
   id: text().primaryKey(),
+  website_marker: text().notNull().unique(),
   privy_user_id: text().notNull().unique(),
   handle: text().notNull().unique(),
   name: text().notNull(),
@@ -32,6 +33,7 @@ export const tags = appSchema.table("tags", {
 });
 export const agents = appSchema.table("agents", {
   id: text().primaryKey(),
+  website_marker: text().notNull().unique(),
   owner_account_id: text()
     .notNull()
     .references(() => accounts.id),
