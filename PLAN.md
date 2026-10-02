@@ -1,5 +1,11 @@
 # Musecity implementation and verification
 
+## Wallet token query removal — local implementation (2026-10-02)
+
+Removed the user-retired "Check another token" form, its custom-token state/read/refresh logic, dedicated styles and obsolete fixture error control. Wallet retains the default ETH and Robinhood MUSEGOD assets, contract details, Receive/Send, network switching and membership. Transfer preparation still re-reads the selected asset's balance and decimals. SPEC.md reflects the reduced scope; earlier release records below remain historical.
+
+Node 24.11.1 / pnpm 10.33.2: typecheck, all 10 wallet tests, changed-file formatting, production build, repository guard and diff checks passed. Eight local browser checks cover query removal, Receive address/QR, ETH/MUSEGOD review, stale-balance blocking and recovery, Base assets and the 390×844 layout. No browser warnings/errors were captured. Evidence is in ignored `apps/web/.local/wallet-token-removal/`. These checks use simulated identity/wallet data and isolated local PostgreSQL; no real confirmation, signature or transfer was performed. At local acceptance, no commit, push or deployment had been performed. The user subsequently requested “部署并提交”, authorizing this change's production deployment and local commits; remote push is excluded.
+
 ## Wallet UI/UX — local implementation (2026-09-30)
 
 Implemented the approved asset-first Wallet plan. The homepage groups the selected network, abbreviated wallet address, Receive/Send actions and exact balances before compact membership. Receive shows a black-and-white address-only SVG QR (`qrcode.react@4.2.0`, four-module margin), the full copyable address and an explicit sending-network reminder. Send moves from fill to review inside one native Dialog, supports editing, unmounts the app modal before wallet confirmation, restores review/draft after cancellation and presents returned hashes with status/explorer access. Uncertain submission preserves the activity link, blocks resending the reviewed draft and offers a deliberately blank new transfer.

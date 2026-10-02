@@ -172,21 +172,9 @@
 .wallet-copy {
   min-height: 44px;
 }
-.wallet-token-query {
-  margin-top: 12px;
-}
-.wallet-token-query > summary {
-  font-size: 13px;
-  color: var(--color-brand);
-  font-weight: 600;
-}
-.wallet-token-query form,
 .wallet-send-form {
   display: grid;
   gap: 12px;
-}
-.wallet-token-query form {
-  padding-top: 12px;
 }
 .wallet-send-form label {
   display: grid;
@@ -196,8 +184,7 @@
   color: #9f1d2d;
   font-size: 13px;
 }
-.wallet-send-form input[aria-invalid="true"],
-.wallet-token-query input[aria-invalid="true"] {
+.wallet-send-form input[aria-invalid="true"] {
   border-color: #9f1d2d;
 }
 .wallet-stale {

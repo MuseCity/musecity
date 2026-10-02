@@ -11,7 +11,7 @@ export const fixtureAddresses: Record<string, Address> = {
   bob: "0x2222222222222222222222222222222222222222",
 };
 export type WalletScenario = {
-  balance: "normal" | "zero" | "default-error" | "custom-error";
+  balance: "normal" | "zero" | "default-error";
   receipt: "pending" | "confirmed" | "reverted" | "error";
   connection: "ready" | "preparing" | "missing" | "unavailable";
   uncertain: boolean;
@@ -39,10 +39,7 @@ export function fixtureWallet(
     },
     assets: async (chain, token) => {
       const mode = scenario().balance;
-      if (
-        (!token && mode === "default-error") ||
-        (token && mode === "custom-error")
-      )
+      if (!token && mode === "default-error")
         throw new Error("Local simulated balance lookup unavailable.");
       if (token && !isAddress(token))
         throw new Error("Invalid token contract.");

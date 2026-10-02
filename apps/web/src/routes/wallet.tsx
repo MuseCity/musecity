@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
-import { formatUnits, isAddress, zeroAddress, type Hex } from "viem";
+import { formatUnits, type Hex } from "viem";
 import { RequireAuth, useAuth } from "../components/auth";
 import { Dialog, Notice } from "../components/ui";
 import { MembershipCard, useMembership } from "../components/membership";
@@ -71,9 +71,6 @@ function WalletPage() {
     member = useMembership();
   const [chainId, setChainId] = useState<WalletChainId>(4663);
   const [balances, setBalances] = useState<BalanceRead>(emptyBalances);
-  const [custom, setCustom] = useState<BalanceRead>(emptyBalances);
-  const [token, setToken] = useState("");
-  const [loadedToken, setLoadedToken] = useState("");
   const [selectedKey, setSelectedKey] = useState("native");
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
@@ -98,7 +95,6 @@ function WalletPage() {
   const [copied, setCopied] = useState("");
   const [copyErrors, setCopyErrors] = useState<Record<string, string>>({});
   const generation = useRef(0),
-    customGeneration = useRef(0),
     alive = useRef(true);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -132,7 +128,6 @@ function WalletPage() {
     return () => {
       alive.current = false;
       generation.current++;
-      customGeneration.current++;
       if (copyTimer.current) clearTimeout(copyTimer.current);
     };
   }, [storageKey]);
@@ -188,59 +183,17 @@ function WalletPage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
-  async function loadToken(contract = token.trim()) {
-    if (!wallet || switching) return;
-    const run = ++customGeneration.current;
-    setCustom((previous) => ({
-      ...previous,
-      busy: true,
-      fresh: false,
-      error: "",
-    }));
-    try {
-      if (!isAddress(contract) || contract.toLowerCase() === zeroAddress)
-        throw new Error("Enter a valid non-zero token contract address.");
-      const assets = await wallet.assets(chainId, contract);
-      const asset = assets.find(
-        (item) => item.address?.toLowerCase() === contract.toLowerCase(),
-      );
-      if (!asset)
-        throw new Error("This token is unavailable on the selected network.");
-      if (alive.current && run === customGeneration.current) {
-        setLoadedToken(contract);
-        setToken(contract);
-        setCustom({ assets: [asset], busy: false, fresh: true, error: "" });
-      }
-    } catch (e) {
-      if (alive.current && run === customGeneration.current)
-        setCustom((previous) => ({
-          ...previous,
-          busy: false,
-          fresh: false,
-          error: walletError(e),
-        }));
-    }
-  }
-  function refreshAll() {
-    void refresh();
-    if (loadedToken) void loadToken(loadedToken);
-  }
   async function switchNetwork(id: WalletChainId) {
     if (!wallet || switching || submitting || id === chainId) return;
     generation.current++;
-    customGeneration.current++;
     setSwitching(true);
     setNetworkError("");
     setBalances((previous) => ({ ...previous, busy: false, fresh: false }));
-    setCustom((previous) => ({ ...previous, busy: false, fresh: false }));
     try {
       await wallet.switchChain(id);
       if (!alive.current) return;
       setBalances(emptyBalances);
-      setCustom(emptyBalances);
       setChainId(id);
-      setToken("");
-      setLoadedToken("");
       setSelectedKey("native");
       setAmount("");
       setReview(null);
@@ -272,7 +225,7 @@ function WalletPage() {
         ),
       );
       if (alive.current && status !== "pending") {
-        refreshAll();
+        void refresh();
         member.reload();
       }
     } catch (e) {
@@ -314,7 +267,7 @@ function WalletPage() {
       setPanel("result");
       setReview(null);
       setAmount("");
-      refreshAll();
+      void refresh();
       void checkTransaction(tx);
     } catch (e) {
       if (alive.current) {
@@ -325,7 +278,7 @@ function WalletPage() {
           setTransferError("");
           setReview(null);
           setPanel("send");
-          refreshAll();
+          void refresh();
         } else {
           setTransferError(message);
           setUncertain(/uncertain|check.*activity/i.test(message));
@@ -371,25 +324,14 @@ function WalletPage() {
     setUncertain(false);
     setPanel("send");
   }
-  const assets = [
-    ...balances.assets,
-    ...custom.assets.filter(
-      (asset) =>
-        !balances.assets.some((item) => assetKey(item) === assetKey(asset)),
-    ),
-  ];
+  const assets = balances.assets;
   const asset = assets.find((item) => assetKey(item) === selectedKey);
-  const assetFresh = balances.assets.some(
-    (item) => assetKey(item) === selectedKey,
-  )
-    ? balances.fresh
-    : custom.fresh;
+  const assetFresh = balances.fresh;
   const reviewFresh =
     !!review &&
     review.chainId === chainId &&
-    (balances.assets.some((item) => assetKey(item) === assetKey(review.asset))
-      ? balances.fresh
-      : custom.fresh);
+    balances.fresh &&
+    assets.some((item) => assetKey(item) === assetKey(review.asset));
   const chain = walletChain(chainId),
     explorer = chain.blockExplorers.default.url;
   const result = transactions.find((item) => txKey(item) === resultKey);
@@ -550,10 +492,8 @@ function WalletPage() {
               <h2>Assets</h2>
               <button
                 className="text-link"
-                disabled={
-                  switching || balances.busy || custom.busy || submitting
-                }
-                onClick={refreshAll}
+                disabled={switching || balances.busy || submitting}
+                onClick={() => void refresh()}
               >
                 Refresh
               </button>
@@ -597,57 +537,9 @@ function WalletPage() {
                       )}
                     </details>
                   )}
-                  {custom.assets.includes(item) && !custom.fresh && (
-                    <p className="wallet-stale">
-                      Token balance is out of date.
-                    </p>
-                  )}
                 </li>
               ))}
             </ul>
-            <details className="wallet-token-query">
-              <summary>Check another token</summary>
-              <form
-                noValidate
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void loadToken();
-                }}
-              >
-                <label htmlFor="wallet-token">
-                  ERC-20 contract on {chain.name}
-                </label>
-                <input
-                  id="wallet-token"
-                  value={token}
-                  onChange={(event) => setToken(event.target.value)}
-                  autoComplete="off"
-                  spellCheck={false}
-                  aria-invalid={!!custom.error}
-                  aria-describedby={
-                    custom.error ? "wallet-token-error" : "wallet-token-note"
-                  }
-                />
-                <p id="wallet-token-note" className="field-note">
-                  Inspect one additional token on this network.
-                </p>
-                {custom.error && (
-                  <p
-                    id="wallet-token-error"
-                    className="wallet-field-error"
-                    role="alert"
-                  >
-                    {custom.error}
-                  </p>
-                )}
-                <button
-                  className="secondary"
-                  disabled={custom.busy || switching || submitting}
-                >
-                  {custom.busy ? "Checking token…" : "Check token"}
-                </button>
-              </form>
-            </details>
           </>
         )}
       </section>
@@ -787,12 +679,10 @@ function WalletPage() {
                   <button
                     type="button"
                     className="text-link"
-                    disabled={balances.busy || custom.busy}
-                    onClick={refreshAll}
+                    disabled={balances.busy}
+                    onClick={() => void refresh()}
                   >
-                    {balances.busy || custom.busy
-                      ? "Updating…"
-                      : "Refresh balances"}
+                    {balances.busy ? "Updating…" : "Refresh balances"}
                   </button>
                 </div>
               )}
@@ -924,8 +814,8 @@ function WalletPage() {
                   This balance is out of date.{" "}
                   <button
                     className="text-link"
-                    disabled={balances.busy || custom.busy}
-                    onClick={refreshAll}
+                    disabled={balances.busy}
+                    onClick={() => void refresh()}
                   >
                     Refresh balances
                   </button>{" "}

@@ -141,7 +141,6 @@ export function AuthProvider({
               <option value="normal">Normal balances</option>
               <option value="zero">Zero balances</option>
               <option value="default-error">Default balance error</option>
-              <option value="custom-error">Custom token error</option>
             </select>
           </label>
           <label>
